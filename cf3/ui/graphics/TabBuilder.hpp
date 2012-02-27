@@ -32,15 +32,14 @@ struct TabInfo
 {
   QWidget * widget;
 
-  int tabIndex;
+  int tab_index;
 
-  bool isVisible;
+  bool is_visible;
 };
 
 class TabBuilder : public QTabWidget
 {
   Q_OBJECT
-
 
 public:
 
@@ -56,14 +55,14 @@ public:
     {
       TabInfo info;
 
-      info.widget = new TYPE(/*this*/);
-      info.tabIndex = addTab(info.widget, node->uri().path().c_str());
-      info.isVisible = true;
+      info.widget = new TYPE(this);
+      info.tab_index = addTab(info.widget, node->uri().path().c_str());
+      info.is_visible = true;
       m_tabs[key] = info;
     }
     else
     {
-      setTabText( m_tabs[key].tabIndex, node->uri().path().c_str() );
+      setTabText( m_tabs[key].tab_index, node->uri().path().c_str() );
       m_new_tabs.append( key );
     }
 

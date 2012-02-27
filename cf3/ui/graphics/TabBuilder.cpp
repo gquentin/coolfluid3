@@ -86,7 +86,7 @@ void TabBuilder::end_model_reset()
 
   while( itTabs != m_tabs.end() )
   {
-    itTabs.value().tabIndex = indexOf( itTabs.value().widget );
+    itTabs.value().tab_index = indexOf( itTabs.value().widget );
     itTabs++;
   }
 }
@@ -98,7 +98,7 @@ void TabBuilder::show_tab( Handle< CNode > node )
   common::UUCount key = node->properties().value<common::UUCount>("uuid"); //node->uri().path();
 
   if( m_tabs.contains(key) )
-    setCurrentIndex( m_tabs[key].tabIndex );
+    setCurrentIndex( m_tabs[key].tab_index );
   else
     throw ValueNotFound(FromHere(), "No tab for component [" +
                         node->uri().path() + "] was found.");
@@ -111,7 +111,7 @@ void TabBuilder::queue_tab(Handle< core::CNode > node)
   std::string uuid = node->properties().value_str("uuid");
 
   if( m_tabs.contains( uuid ) )
-     m_last_tabs[uuid] = m_tabs[uuid].tabIndex;
+     m_last_tabs[uuid] = m_tabs[uuid].tab_index;
 }
 
 ///////////////////////////////////////////////////////////////////////////
