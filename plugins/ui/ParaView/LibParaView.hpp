@@ -46,7 +46,7 @@ public:
 public: // functions
 
   /// @return string of the library namespace
-  static std::string library_namespace() { return "cf3.UI.ParaView"; }
+  static std::string library_namespace() { return "cf3.ui.ParaView"; }
 
   /// Static function that returns the module name.
   /// Must be implemented for Library registration
@@ -66,7 +66,7 @@ public: // functions
   static std::string type_name() { return "LibParaView"; }
 
   virtual void initiate();
-  
+
 protected:
 
   /// initiate library
