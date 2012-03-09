@@ -4,7 +4,6 @@
 // GNU Lesser General Public License version 3 (LGPLv3).
 // See doc/lgpl.txt and doc/gpl.txt for the license text.
 
-#include <QtCore>
 
 // header
 #include <boost/multi_array/storage_order.hpp>
@@ -95,8 +94,6 @@ void NPlotXY::go_to_plot( common::SignalArgs& node )
 
 void NPlotXY::setup_finished()
 {
-  qDebug() << this->thread() << qApp->thread();
-
   TabBuilder::instance()->widget<Graph>( handle<CNode>() );
 }
 
