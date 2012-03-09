@@ -44,6 +44,7 @@ class Core_API NetworkThread :
     public QThread,
     public common::SignalHandler
 {
+  Q_OBJECT
 
 public:
 
@@ -87,6 +88,10 @@ private: // callback functions
   void callback_read( const boost::system::error_code & error );
 
   void callback_send( const boost::system::error_code & error );
+
+signals:
+
+  void network_new_signal( cf3::common::SignalArgs & args );
 
 private: // data
 

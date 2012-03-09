@@ -72,9 +72,12 @@ public:
     return Handle<NRoot>(m_root);
   }
 
-  void new_signal( common::SignalArgs &doc);
-
   void set_mutex(QMutex* mutex);
+
+private slots:
+
+  void new_signal( cf3::common::SignalArgs &doc);
+
 
 private:
 

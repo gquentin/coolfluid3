@@ -218,7 +218,8 @@ void NetworkThread::callback_read( const boost::system::error_code & error )
 {
   if( !error )
   {
-    call_signal( "network_new_frame", m_buffer );
+//    call_signal( "network_new_frame", m_buffer );
+    emit network_new_signal(m_buffer);
     init_read();
   }
 //  else if ( (error == boost::asio::error::bad_descriptor ||
@@ -245,6 +246,7 @@ void NetworkThread::callback_read( const boost::system::error_code & error )
 
     SignalFrame frame;
     call_signal( "network_disconnected", frame );
+    emit
 
     m_request_disc = false;
   }

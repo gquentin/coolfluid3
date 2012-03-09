@@ -111,8 +111,15 @@ void TreeThread::run()
   // set the root as model root
   tree->set_tree_root(realRoot);
 
-  ThreadManager::instance().network().signal( "network_new_frame" )
-      ->connect( boost::bind(&TreeThread::new_signal, this, _1) );
+  qRegisterMetaType<common::SignalArgs>("cf3::common::SignalArgs");
+
+  connect( &ThreadManager::instance().network(),
+           SIGNAL(network_new_signal( cf3::common::SignalArgs&)),
+           this,
+           SLOT(new_signal(cf3::common::SignalArgs&)));
+
+//  ThreadManager::instance().network().signal( "network_new_frame" )
+//      ->connect( boost::bind(&TreeThread::new_signal, this, _1) );
 
   m_mutex->unlock();
 //  m_waitCondition.wakeAll();

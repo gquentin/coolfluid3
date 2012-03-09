@@ -19,6 +19,7 @@ PropertyModel.hpp
 RemoteDispatcher.hpp
 TreeNode.hpp
 TreeThread.hpp
+NetworkThread.hpp
 )
 
 # Create the moc files
