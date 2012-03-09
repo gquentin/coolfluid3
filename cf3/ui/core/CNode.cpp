@@ -651,7 +651,6 @@ boost::shared_ptr< CNode > CNode::create_from_xml_recursive( XmlNode & node,
       if(node.get() != nullptr)
       {
         root_node->add_node(node);
-        NLog::global()->add_message( QString("Finishing setup for %1").arg(node->uri().string().c_str()));
         node->setup_finished();
       }
     }

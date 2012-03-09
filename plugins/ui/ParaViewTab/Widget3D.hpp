@@ -143,7 +143,7 @@ private slots: //slots
   /// Change the current Region/Actor opacity.
   /// @param type
   /// @param name The current mash style name.
-  void enable_solide_color_button(pqVariableType type, const QString &name);
+  void enable_solid_color_button(pqVariableType type, const QString &name);
 
   /// Display View Camera settings.
   void show_camera_settings();

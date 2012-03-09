@@ -149,7 +149,7 @@ Widget3D::Widget3D(QWidget *parent) :
                                             "Disconnect", this, SLOT(disconnect_from_server()));
 
   m_action_load_file = tool_bar->addAction(QIcon(":/paraview_icons/pqOpen24.png"),
-                                           "Load File", this, SLOT(showLoadFileDialog()));
+                                           "Load File", this, SLOT(show_load_file_dialog()));
   m_action_disconnect->setEnabled( false );
   m_action_load_file->setEnabled( false );
 
@@ -296,13 +296,14 @@ Widget3D::Widget3D(QWidget *parent) :
   connect(m_preDefined_rotation,SIGNAL(activated(int)),this,SLOT(set_rotation(int)));
   connect(m_show_color_palette, SIGNAL(released()), this, SLOT(show_color_editor()));
   connect(m_mesh_solid_color_set,SIGNAL(released()),this,SLOT(set_solid_color()));
-  connect(m_dataSet_selector,SIGNAL(variableChanged(pqVariableType, const QString)),this,SLOT(enable_solide_color_button(pqVariableType, const QString)));
+  connect(m_dataSet_selector,SIGNAL(variableChanged(pqVariableType, const QString)),this,SLOT(enable_solid_color_button(pqVariableType, const QString)));
   connect(m_disp_adv_opt_button,SIGNAL(released()),this,SLOT(show_disp_adv_settings()));
   connect(m_gen_adv_opt_button,SIGNAL(released()),this,SLOT(show_gen_adv_settings()));
   connect(m_serv_adv_opt_button,SIGNAL(released()),this,SLOT(show_serv_adv_settings()));
   connect(m_checkbox_enable_rendering,SIGNAL(toggled(bool)),this,SLOT(enable_rendering(bool)));
   connect(m_list_selection,SIGNAL(activated(int)),this,SLOT(set_actor_list_selection_mode(int)));
-  connect(NTree::global().get(),SIGNAL(advancedModeChanged(bool)),this,SLOT(show_advanced_options(bool)));
+  connect( NTree::global().get(), SIGNAL(advanced_mode_changed(bool)),
+           this, SLOT(show_advanced_options(bool)));
 
 //  qDebug() << "widget built";
 
@@ -827,7 +828,7 @@ void Widget3D::opacity_change(double value){
   m_RenderView->getWidget()->update();
 }
 
-void Widget3D::enable_solide_color_button(pqVariableType type, const QString &name){
+void Widget3D::enable_solid_color_button(pqVariableType type, const QString &name){
   m_mesh_solid_color_set->setEnabled(name == "Solid Color");
   this->m_show_color_palette->setEnabled(name != "Solid Color");
 }

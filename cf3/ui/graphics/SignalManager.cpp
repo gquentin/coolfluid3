@@ -159,6 +159,8 @@ void SignalManager::signal_signature(SignalArgs & args)
 
     try
     {
+      m_dialog = new SignatureDialog();
+      connect(m_dialog, SIGNAL(finished(int)), this, SLOT(dialog_finished(int)));
       m_dialog->show(options.main_map.content, m_current_action->text());
     }
     catch( Exception & e)

@@ -21,9 +21,6 @@
 #include "common/OptionURI.hpp"
 #include "common/StringConversion.hpp"
 
-#include "common/Log.hpp"
-#include "common/XML/SignalOptions.hpp"
-
 #include "common/XML/CastingFunctions.hpp"
 #include "common/XML/Protocol.hpp"
 #include "common/XML/SignalFrame.hpp"
@@ -463,15 +460,9 @@ void SignalOptions::add_to_map( Map & map, const OptionList & list )
       else if ( type == Protocol::Tags::type<std::string>() )
         add_opt_to_xml<std::string>( map, option,  option->value_str() );
       else if ( type == Protocol::Tags::type<URI>() )
-      {
-        CFinfo << "URI ->" << option->name() << " " << type << CFendl;
         add_opt_to_xml<URI>( map, option,  option->value<URI>() );
-      }
       else if ( boost::algorithm::starts_with(option->type(), "handle") )
-      {
-        CFinfo << "Handle ->" << option->name() << " " << type << CFendl;
         add_opt_to_xml<URI>( map, option,  URI( option->value_str() ) );
-      }
       else
         throw ShouldNotBeHere(FromHere(), "Unable to handle options of type [" + type +"].");
     }
