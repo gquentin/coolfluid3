@@ -13,7 +13,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 /// Define the macro QwtTab_API
-/// @note build system defines COOLFLUID_UI_QWTTAB_EXPORTS when compiling QwtTabTools files
+/// @note build system defines COOLFLUID_UI_QWTTAB_EXPORTS when compiling QwtTab plugin files
 #ifdef COOLFLUID_UI_QWTTAB_EXPORTS
 #   define QwtTab_API      CF3_EXPORT_API
 #   define QwtTab_TEMPLATE
@@ -48,7 +48,7 @@ public:
 public: // functions
 
     /// @return string of the library namespace
-    static std::string library_namespace() { return "cf3.UI.QwtTab"; }
+    static std::string library_namespace() { return "cf3.ui.QwtTab"; }
 
     /// Static function that returns the library name.
     /// Must be implemented for Library registration
@@ -68,7 +68,7 @@ public: // functions
     static std::string type_name() { return "LibQwtTab"; }
 
     virtual void initiate();
-    
+
 protected:
 
     /// initiate library

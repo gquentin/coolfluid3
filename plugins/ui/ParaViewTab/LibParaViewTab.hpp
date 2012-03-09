@@ -15,7 +15,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Define the macro ParaViewTab_API
-/// @note build system defines COOLFLUID_UI_PARAVIEWTAB_EXPORTS when compiling ParaViewTabTools files
+/// @note build system defines COOLFLUID_UI_PARAVIEWTAB_EXPORTS when compiling ParaViewTab plugin files
 #ifdef COOLFLUID_UI_PARAVIEWTAB_EXPORTS
 #   define ParaViewTab_API      CF3_EXPORT_API
 #   define ParaViewTab_TEMPLATE
@@ -74,7 +74,7 @@ public: // functions
 
     virtual void initiate();
     virtual void terminate();
-    
+
 protected:
 
     /// initiate library

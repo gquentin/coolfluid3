@@ -15,7 +15,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Define the macro ParaView_API
-/// @note build system defines COOLFLUID_UI_ParaView_EXPORTS when compiling ParaViewTools files
+/// @note build system defines COOLFLUID_UI_ParaView_EXPORTS when compiling ParaView plugin files
 #ifdef COOLFLUID_UI_PARAVIEW_EXPORTS
 #   define ParaView_API      CF3_EXPORT_API
 #   define ParaView_TEMPLATE
