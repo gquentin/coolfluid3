@@ -81,9 +81,6 @@ void MeshReader::execute()
   // Call the concrete implementation
   do_read_mesh_into(m_file_path, *m_mesh);
 
-  // Fix global numbering
-  build_component_abstract_type<MeshTransformer>("cf3.mesh.actions.GlobalNumbering","glb_numbering")->transform(m_mesh);
-
   // Raise an event to indicate that a mesh was loaded happened
   m_mesh->raise_mesh_loaded();
 
@@ -120,7 +117,11 @@ void MeshReader::signal_read( SignalArgs& node  )
     // Get the file paths
     boost_foreach(const URI& file, files)
     {
+      // Call the concrete implementation
       do_read_mesh_into(file, *mesh);
+
+      // Raise an event to indicate that a mesh was loaded happened
+      mesh->raise_mesh_loaded();
     }
   }
   else

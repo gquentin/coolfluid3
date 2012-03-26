@@ -64,6 +64,10 @@ coolfluid_add_test( UTEST utest-mesh-components
                     CPP   utest-mesh-components.cpp
                     LIBS  coolfluid_mesh )
 
+coolfluid_add_test( UTEST utest-mesh-meshadaptor
+                    CPP   utest-mesh-meshadaptor.cpp
+                    LIBS  coolfluid_mesh
+                    MPI   2)
 
 coolfluid_add_test( UTEST     utest-mesh-cgns
                     CPP       utest-mesh-cgns.cpp
@@ -86,7 +90,7 @@ coolfluid_add_test( UTEST utest-mesh-gmsh
                     
 coolfluid_add_test( UTEST utest-mesh-gmsh-parallel
                     CPP   utest-mesh-gmsh-parallel.cpp
-                    LIBS  coolfluid_mesh_gmsh coolfluid_mesh_lagrangep1 coolfluid_mesh_lagrangep2
+                    LIBS  coolfluid_mesh_gmsh coolfluid_mesh_lagrangep1 coolfluid_mesh_lagrangep2 coolfluid_mesh_actions
                     MPI   2
                     DEPENDS copy-resources )
 

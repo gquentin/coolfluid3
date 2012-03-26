@@ -141,25 +141,15 @@ void Reader::do_read_mesh_into(const URI& file, Mesh& mesh)
   m_node_idx_gmsh_to_cf.clear();
   m_elem_idx_gmsh_to_cf.clear();
 
-
-  boost_foreach(Elements& elements, find_components_recursively<Elements>(m_mesh->topology()))
-  {
-    elements.rank().resize(elements.size());
-    Uint my_rank = options().option("part").value<Uint>();
-    for (Uint e=0; e<elements.size(); ++e)
-    {
-      elements.rank()[e] = my_rank;
-    }
-  }
-
-
-  m_mesh->elements().update();
   m_mesh->update_statistics();
+  m_mesh->update_structures();
 
   // clean-up
   m_ghost_nodes.clear();
   m_used_nodes.clear();
   m_node_idx_gmsh_to_cf.clear();
+  if (is_not_null(m_hash))
+    remove_component(*m_hash);
 
   // close the file
   m_file.close();
@@ -324,7 +314,7 @@ void Reader::find_used_nodes()
     if (m_total_nb_elements > 100000)
     {
       if(i%(m_total_nb_elements/20)==0)
-        CFinfo << 100*i/m_total_nb_elements << "% " << CFendl;
+        CFinfo << 100*i/m_total_nb_elements << "% " << CFflush;
     }
 
     if (m_hash->subhash(ELEMS).owns(i))
@@ -371,7 +361,9 @@ void Reader::find_used_nodes()
     if (m_total_nb_nodes > 100000)
     {
       if(node_idx%(m_total_nb_nodes/20)==0)
-        CFinfo << 100*node_idx/m_total_nb_nodes << "% " << CFendl;
+        CFinfo << 100*node_idx/m_total_nb_nodes << "% " << CFflush;
+      if (node_idx == m_total_nb_nodes-1)
+        CFinfo << CFendl;
     }
     getline(m_file,line);
 
@@ -547,6 +539,7 @@ void Reader::read_connectivity()
    // Take the gmsh element types present in this region and generate new names of elements which correspond
    // to coolfuid naming:
    for(Uint etype = 0; etype < Shared::nb_gmsh_types; ++etype)
+   {
      if(m_region_list[ir].element_types.find(etype) !=  m_region_list[ir].element_types.end())
      {
        const std::string cf_elem_name = Shared::gmsh_name_to_cf_name(m_mesh_dimension,etype);
@@ -562,17 +555,14 @@ void Reader::read_connectivity()
       region->add_component(elements);
       elements->initialize(cf_elem_name,nodes);
 
-      // Celements& elements = region->create_component<Elements>(cf_elem_name);
-      // elements.initialize(cf_elem_name,nodes);
-
        Connectivity& elem_table = Handle<Elements>(elements)->geometry_space().connectivity();
        elem_table.set_row_size(Shared::m_nodes_in_gmsh_elem[etype]);
        elem_table.resize((m_nb_gmsh_elem_in_region[ir])[etype]);
        elements->rank().resize(m_nb_gmsh_elem_in_region[ir][etype]);
+       elements->glb_idx().resize(m_nb_gmsh_elem_in_region[ir][etype]);
        conn_table_idx[ir].insert(std::pair<Uint,Entities*>(etype,elements.get()));
      }
-
-
+   }
  }
 
    std::string etype_CF;
@@ -649,6 +639,7 @@ void Reader::read_connectivity()
       }
 
       elements_region->rank()[row_idx] = part;
+      elements_region->glb_idx()[row_idx] = element_number-1;
 
       (m_nb_gmsh_elem_in_region[phys_tag-1])[gmsh_element_type]++;
 
@@ -820,7 +811,6 @@ void Reader::read_variable_header(std::map<std::string,Field>& fields)
 {
   std::string line;
   std::string dummy;
-
 
   Uint nb_string_tags(0);
   std::string var_name("var");
