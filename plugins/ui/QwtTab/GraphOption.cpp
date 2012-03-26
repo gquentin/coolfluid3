@@ -530,7 +530,7 @@ void GraphOption::line_type_changed(int current_index)
     //disconect checkbox to avoid looping
     disconnect(((QComboBox *)m_line_table->cellWidget(
         m_line_table->selectionModel()->selectedRows().at(i).row(),4)),
-               SIGNAL(current_index_changed(int)), this, SLOT (line_type_changed(int)));
+               SIGNAL(currentIndexChanged(int)), this, SLOT (line_type_changed(int)));
 
     //change state
     ((QComboBox *)m_line_table->cellWidget(
@@ -540,7 +540,7 @@ void GraphOption::line_type_changed(int current_index)
     //re-connect after changing state
     connect(((QComboBox *)m_line_table->cellWidget(
         m_line_table->selectionModel()->selectedRows().at(i).row(),4)),
-            SIGNAL(current_index_changed(int)), this, SLOT (line_type_changed(int)));
+            SIGNAL(currentIndexChanged(int)), this, SLOT (line_type_changed(int)));
 
     //if one of the changed line is checked, then redraw, otherwise not.
     if(((QCheckBox *)m_line_table->cellWidget(
