@@ -156,7 +156,7 @@ void C3DView::launch_pvserver( SignalArgs & args )
     data[0] = QHostInfo::localHostName().toStdString();
     data[1] = QString::number(m_port).toStdString();
 
-    XmlNode node = options.set_array("infoServer", data, " ; ");
+    XmlNode node = options.set_array("infoServer", common::class_name<std::string>(), common::option_vector_to_str(data, ";"), " ; ");
   }
 }
 
@@ -222,7 +222,7 @@ void C3DView::send_server_info_to_client( SignalArgs & args )
     data[0] =  options.get_option<std::string>("paraview_server_port");
     data[1] = QFileInfo( options.get_option<std::string>("paraview_server_port") .c_str()).fileName().section('.',0,0).toStdString();
 
-    XmlNode node = options.set_array("pathinfo", data, " ; ");
+    XmlNode node = options.set_array("pathinfo", common::class_name<std::string>(), common::option_vector_to_str(data, ";"), " ; ");
   }
 }
 
