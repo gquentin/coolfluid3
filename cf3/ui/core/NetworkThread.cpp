@@ -218,6 +218,13 @@ void NetworkThread::callback_read( const boost::system::error_code & error )
 {
   if( !error )
   {
+    if( NTree::global()->is_debug_mode_enabled() )
+    {
+      std::string str;
+      XML::to_string(m_buffer.node, str);
+      NLog::global()->add_message( str.c_str() );
+    }
+
 //    call_signal( "network_new_frame", m_buffer );
     emit network_new_signal(m_buffer);
     init_read();
@@ -246,7 +253,6 @@ void NetworkThread::callback_read( const boost::system::error_code & error )
 
     SignalFrame frame;
     call_signal( "network_disconnected", frame );
-    emit
 
     m_request_disc = false;
   }

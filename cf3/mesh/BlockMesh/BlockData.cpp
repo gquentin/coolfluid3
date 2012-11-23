@@ -57,7 +57,7 @@ namespace detail
   {
     SignalFrame reply = args.create_reply(created_component.parent()->uri());
     SignalOptions reply_options(reply);
-    reply_options.add_option("created_component", created_component.uri());
+    reply_options.add("created_component", created_component.uri());
   }
 
   /// Create the first step length and expansion ratios in each direction (in the mapped space)
@@ -177,7 +177,8 @@ struct BlockArrays::Implementation
       if(i == nb_points[search_direction])
       {
         Block neighbor = *neighbors[search_direction];
-        neighbor.search_indices = search_indices;
+        for(Uint j = 0; j != search_direction; ++j)
+          neighbor = neighbor[search_indices[j]];
         neighbor.search_indices.push_back(0);
         return neighbor;
       }
@@ -286,9 +287,23 @@ struct BlockArrays::Implementation
     }
   }
 
+  void trigger_block_regions()
+  {
+    const Uint nb_blocks = blocks->size();
+    if(block_regions.size() && block_regions.size() != nb_blocks)
+    {
+      const Uint nb_block_regions = block_regions.size();
+      block_regions.clear();
+      throw SetupError(FromHere(), "Wrong number of regions for blocks, expected: " + boost::lexical_cast<std::string>(nb_blocks) + ", obtained: " + boost::lexical_cast<std::string>(nb_block_regions));
+    }
+    if(block_regions.empty())
+      block_regions.assign(nb_blocks, "interior");
+  }
+
   /// Create a list of blocks, initialized based on the blockmesh structure
   void create_blocks()
   {
+    trigger_block_regions();
     ghost_counter = 0;
     const Uint rank = PE::Comm::instance().rank();
     const Uint partition_begin = block_distribution[rank];
@@ -340,6 +355,19 @@ struct BlockArrays::Implementation
       for(Uint i = 0; i != dimensions; ++i)
       {
         // Add the block
+        if(!face_conn.has_adjacent_element(block_idx, positive_faces[i]) || !face_conn.has_adjacent_element(block_idx, negative_faces[i]))
+        {
+          std::stringstream error_str;
+          error_str << "Block " << block_idx << " has no adjacent element for patch [ ";
+          const ElementType::FaceConnectivity& faces = dimensions == 3 ? LagrangeP1::Hexa3D::faces() : LagrangeP1::Quad2D::faces();
+          const Uint bad_face_idx = !face_conn.has_adjacent_element(block_idx, positive_faces[i]) ? positive_faces[i] : negative_faces[i];
+          BOOST_FOREACH(const Uint i, faces.nodes_range(bad_face_idx))
+          {
+            error_str << row[i] << " ";
+          }
+          error_str << "]. Did you flip the ordering of patch nodes?";
+          throw common::SetupError(FromHere(), error_str.str()); 
+        }
         CFaceConnectivity::ElementReferenceT adj_elem = face_conn.adjacent_element(block_idx, positive_faces[i]);
         block.strides[i] = stride;
         block.bounded[i] = adj_elem.first->element_type().dimensionality() != dimensions;
@@ -352,17 +380,29 @@ struct BlockArrays::Implementation
       }
 
       // Add patches
+      const std::string& my_region = block_regions[block_idx];
       for(Uint i = 0; i != dimensions; ++i)
       {
-        const Elements* adj_elems[2];
-        adj_elems[0] = face_conn.adjacent_element(block_idx, negative_faces[i]).first;
-        adj_elems[1] = face_conn.adjacent_element(block_idx, positive_faces[i]).first;
+        CFaceConnectivity::ElementReferenceT adj_elems[2];
+        adj_elems[0] = face_conn.adjacent_element(block_idx, negative_faces[i]);
+        adj_elems[1] = face_conn.adjacent_element(block_idx, positive_faces[i]);
         // check for a patch both in the positive and negative direction
         for(Uint dir = 0; dir != 2; ++dir)
         {
-          if(adj_elems[dir]->element_type().dimensionality() == (dimensions-1))
+          if(adj_elems[dir].first->element_type().dimensionality() == (dimensions-1))
           {
-            patch_map[adj_elems[dir]->parent()->name()].push_back(new Patch(block, i, dir * (block.nb_points[i]-1)));
+            patch_map[adj_elems[dir].first->parent()->name()].push_back(new Patch(block, i, dir * (block.nb_points[i]-1)));
+          }
+          else
+          {
+            cf3_assert(adj_elems[dir].first->element_type().dimensionality() == dimensions);
+            cf3_assert(adj_elems[dir].second < block_regions.size());
+            const std::string& other_region = block_regions[adj_elems[dir].second];
+            if(other_region != my_region)
+            {
+              const std::string internal_patch_name = std::string("region_bnd_") + my_region + "_" + other_region;
+              patch_map[internal_patch_name].push_back(new Patch(block, i, dir * (block.nb_points[i])));
+            }
           }
         }
       }
@@ -614,11 +654,13 @@ struct BlockArrays::Implementation
       {
         if(!patch.block.is_local)
           continue;
+        const Uint first_offset = patch.fixed_direction == 0 ? 1 : 0;
+        const Uint second_offset = patch.fixed_direction == 0 ? 0 : 1;
         for(Uint i = 0; i != patch.segments[0]; ++i)
         {
           Connectivity::Row elem_row = patch_conn[elem_idx++];
-          elem_row[0] = to_local(patch.global_idx(i  ));
-          elem_row[1] = to_local(patch.global_idx(i+1));
+          elem_row[0] = to_local(patch.global_idx(i + first_offset));
+          elem_row[1] = to_local(patch.global_idx(i + second_offset));
         }
       }
     }
@@ -827,6 +869,11 @@ struct BlockArrays::Implementation
 
   void partition_blocks(const Uint nb_partitions, const Uint direction)
   {
+    // save the block regions
+    trigger_block_regions();
+    const std::vector<std::string> old_block_regions = block_regions;
+    block_regions.clear();
+
     const Uint dimensions = points->row_size();
     const Uint mapped_stride = dimensions == 3 ? 4 : 2;
     const BlocksPartitioning blocks_in = create_partitioning_data();
@@ -1018,6 +1065,8 @@ struct BlockArrays::Implementation
               // append data to the output
               blocks_out.block_gradings.push_back(new_gradings);
               blocks_out.block_subdivisions.push_back(new_block_subdivisions);
+
+              block_regions.push_back(old_block_regions[block_idx]);
             }
 
             // All slices are immediatly accounted for
@@ -1036,6 +1085,7 @@ struct BlockArrays::Implementation
             {
               blocks_out.block_gradings.push_back(blocks_to_partition.block_gradings[block_idx]);
               blocks_out.block_subdivisions.push_back(blocks_to_partition.block_subdivisions[block_idx]);
+              block_regions.push_back(old_block_regions[block_idx]);
             }
           }
 
@@ -1119,7 +1169,8 @@ struct BlockArrays::Implementation
 
   /// Helper data to construct the mesh connectivity
   std::vector<Block> block_list;
-  std::map<std::string, boost::ptr_vector<Patch> > patch_map;
+  typedef std::map<std::string, boost::ptr_vector<Patch> > PatchMapT;
+  PatchMapT patch_map;
   /// Distribution of nodes across the CPUs
   std::vector<Uint> nodes_dist;
   Uint local_nodes_begin;
@@ -1128,6 +1179,7 @@ struct BlockArrays::Implementation
   typedef std::map<Uint, Uint> IndexMapT;
   IndexMapT global_to_local;
   std::vector<Uint> block_distribution;
+  std::vector<std::string> block_regions;
 };
 
 BlockArrays::BlockArrays(const std::string& name) :
@@ -1193,14 +1245,20 @@ BlockArrays::BlockArrays(const std::string& name) :
     .pretty_name("Create Mesh")
     .signature( boost::bind(&BlockArrays::signature_create_mesh, this, _1) );
 
-  options().add_option("block_distribution", std::vector<Uint>())
+  options().add("block_distribution", std::vector<Uint>())
     .pretty_name("Block Distribution")
     .description("The distribution of the blocks among CPUs in a parallel simulation")
     .link_to(&m_implementation->block_distribution)
     .attach_trigger(boost::bind(&Implementation::trigger_block_distribution, m_implementation.get()));
 
-  options().add_option("overlap", 1u).pretty_name("Overlap")
+  options().add("overlap", 1u).pretty_name("Overlap")
     .description("Number of cell layers to overlap across parallel partitions. Ignored in serial runs");
+
+  options().add("block_regions", std::vector<std::string>())
+    .pretty_name("Block Regions")
+    .description("For each block, the region it belongs to. Leave empty to assign each block to the region \"interior\"")
+    .link_to(&m_implementation->block_regions)
+    .attach_trigger(boost::bind(&Implementation::trigger_block_regions, m_implementation.get()));
 }
 
 BlockArrays::~BlockArrays()
@@ -1409,7 +1467,8 @@ void BlockArrays::partition_blocks(const Uint nb_partitions, const Uint directio
   m_implementation->partition_blocks(nb_partitions, direction);
 
   // The algorithm just modifies the linked parameter, so we need to reset the option to keep it in sync
-  options().configure_option("block_distribution", m_implementation->block_distribution);
+  options().set("block_distribution", m_implementation->block_distribution);
+  options().set("block_regions", m_implementation->block_regions);
 }
 
 void BlockArrays::extrude_blocks(const std::vector<Real>& positions, const std::vector< Uint >& nb_segments, const std::vector< Real >& gradings)
@@ -1555,10 +1614,10 @@ void BlockArrays::create_mesh(Mesh& mesh)
 
   m_implementation->create_nodes_distribution(nb_procs, rank);
 
-  // Element distribution among CPUs
-  std::vector<Uint> elements_dist;
-  elements_dist.reserve(nb_procs+1);
-  elements_dist.push_back(0);
+  m_implementation->trigger_block_regions();
+
+  typedef std::map< std::string, std::vector<Uint> > ElementsDistT;
+  ElementsDistT elements_dist;
   for(Uint proc = 0; proc != nb_procs; ++proc)
   {
     const Uint proc_begin = m_implementation->block_distribution[proc];
@@ -1566,23 +1625,34 @@ void BlockArrays::create_mesh(Mesh& mesh)
     Uint nb_elements = 0;
     for(Uint block = proc_begin; block != proc_end; ++block)
     {
-      nb_elements += m_implementation->block_list[block].nb_elems;
+      std::vector<Uint>& region_elements_dist = elements_dist[m_implementation->block_regions[block]];
+      if(region_elements_dist.empty())
+        region_elements_dist.push_back(0);
+      if(region_elements_dist.size() < proc + 2)
+        region_elements_dist.push_back(region_elements_dist.back());
+      region_elements_dist.back() += m_implementation->block_list[block].nb_elems;
     }
-    elements_dist.push_back(elements_dist.back() + nb_elements);
   }
 
   const Uint blocks_begin = m_implementation->block_distribution[rank];
   const Uint blocks_end = m_implementation->block_distribution[rank+1];
 
   Dictionary& geometry_dict = mesh.geometry_fields();
-  Elements& volume_elements = mesh.topology().create_region("interior").create_elements(dimensions == 3 ? "cf3.mesh.LagrangeP1.Hexa3D" : "cf3.mesh.LagrangeP1.Quad2D", geometry_dict);
-  volume_elements.resize(elements_dist[rank+1]-elements_dist[rank]);
+
+  std::map<std::string, Elements*> elements_map;
+  for(ElementsDistT::const_iterator it = elements_dist.begin(); it != elements_dist.end(); ++it)
+  {
+    const std::vector<Uint>& region_elements_dist = it->second;
+    Elements& volume_elements = mesh.topology().create_region(it->first).create_elements(dimensions == 3 ? "cf3.mesh.LagrangeP1.Hexa3D" : "cf3.mesh.LagrangeP1.Quad2D", geometry_dict);
+    volume_elements.resize(region_elements_dist[rank+1]-region_elements_dist[rank]);
+    elements_map[it->first] = &volume_elements;
+  }
 
   // Set the connectivity, this also updates ghost node indices
-  Uint element_idx = 0; // global element index
+  std::map<std::string, Uint> element_idx_map; // global element index per region
   for(Uint block_idx = blocks_begin; block_idx != blocks_end; ++block_idx)
   {
-    m_implementation->add_block(block_subdivisions[block_idx], block_idx, volume_elements.geometry_space().connectivity(), element_idx);
+    m_implementation->add_block(block_subdivisions[block_idx], block_idx, elements_map[m_implementation->block_regions[block_idx]]->geometry_space().connectivity(), element_idx_map[m_implementation->block_regions[block_idx]]);
   }
 
   const Uint nodes_begin = m_implementation->nodes_dist[rank];
@@ -1603,12 +1673,12 @@ void BlockArrays::create_mesh(Mesh& mesh)
   }
 
   // Add surface patches
-  boost_foreach(const Component& patch_description, *m_implementation->patches)
+  for(Implementation::PatchMapT::const_iterator it = m_implementation->patch_map.begin(); it != m_implementation->patch_map.end(); ++it)
   {
     m_implementation->add_patch
     (
-      patch_description.name(),
-      mesh.topology().create_region(patch_description.name()).create_elements(dimensions == 3 ? "cf3.mesh.LagrangeP1.Quad3D" : "cf3.mesh.LagrangeP1.Line2D", geometry_dict)
+      it->first,
+      mesh.topology().create_region(it->first).create_elements(dimensions == 3 ? "cf3.mesh.LagrangeP1.Quad3D" : "cf3.mesh.LagrangeP1.Line2D", geometry_dict)
     );
   }
 
@@ -1684,31 +1754,27 @@ void BlockArrays::create_mesh(Mesh& mesh)
     element_offset += nb_elems;
   }
 
-  mesh.update_statistics();
   mesh.update_structures();
 
-  const Uint overlap = options().option("overlap").value<Uint>();
+  const Uint overlap = options().value<Uint>("overlap");
   if(overlap != 0 && PE::Comm::instance().size() > 1)
   {
-    MeshTransformer& global_conn = *Handle<MeshTransformer>(create_component("GlobalConnectivity", "cf3.mesh.actions.GlobalConnectivity"));
-    global_conn.transform(mesh);
-
+    mesh.block_mesh_changed(true); // avoid triggering mesh_changed before the load event is raised
     MeshTransformer& grow_overlap = *Handle<MeshTransformer>(create_component("GrowOverlap", "cf3.mesh.actions.GrowOverlap"));
     for(Uint i = 0; i != overlap; ++i)
       grow_overlap.transform(mesh);
 
     mesh.geometry_fields().remove_component("CommPattern");
+    mesh.block_mesh_changed(false);
   }
-
-  // Raise an event to indicate that a mesh was loaded happened
   mesh.raise_mesh_loaded();
 }
 
 void BlockArrays::signature_partition_blocks(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("nb_partitions", PE::Comm::instance().size()).pretty_name("Nb. Partitions").description("Number of partitions");
-  options.add_option("direction", 0u).pretty_name("Direction").description("Partitioning direction (0=X, 1=Y, 2=Z)");
+  options.add("nb_partitions", PE::Comm::instance().size()).pretty_name("Nb. Partitions").description("Number of partitions");
+  options.add("direction", 0u).pretty_name("Direction").description("Partitioning direction (0=X, 1=Y, 2=Z)");
 }
 
 void BlockArrays::signal_partition_blocks(SignalArgs& args)
@@ -1722,8 +1788,8 @@ void BlockArrays::signal_partition_blocks(SignalArgs& args)
 void BlockArrays::signature_create_points(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("dimensions", 3u).pretty_name("Dimensions").description("The physical dimensions for the mesh (must be 2 or 3)");
-  options.add_option("nb_points", 0u).pretty_name("Number of points").description("The number of points needed to define the blocks");
+  options.add("dimensions", 3u).pretty_name("Dimensions").description("The physical dimensions for the mesh (must be 2 or 3)");
+  options.add("nb_points", 0u).pretty_name("Number of points").description("The number of points needed to define the blocks");
 }
 
 void BlockArrays::signal_create_points(SignalArgs& args)
@@ -1736,7 +1802,7 @@ void BlockArrays::signal_create_points(SignalArgs& args)
 void BlockArrays::signature_create_blocks(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("nb_blocks", 0u).pretty_name("Number of blocks").description("The number of blocks that are needed");
+  options.add("nb_blocks", 0u).pretty_name("Number of blocks").description("The number of blocks that are needed");
 }
 
 void BlockArrays::signal_create_blocks(SignalArgs& args)
@@ -1761,8 +1827,8 @@ void BlockArrays::signal_create_block_gradings(SignalArgs& args)
 void BlockArrays::signature_create_patch_nb_faces(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("name", "Default").pretty_name("Patch Name").description("The name for the created patch");
-  options.add_option("nb_faces", 0u).pretty_name("Number of faces").description("The number of faces (of individual blocks) that make up the patch");
+  options.add("name", "Default").pretty_name("Patch Name").description("The name for the created patch");
+  options.add("nb_faces", 0u).pretty_name("Number of faces").description("The number of faces (of individual blocks) that make up the patch");
 }
 
 void BlockArrays::signal_create_patch_nb_faces(SignalArgs& args)
@@ -1775,8 +1841,8 @@ void BlockArrays::signal_create_patch_nb_faces(SignalArgs& args)
 void BlockArrays::signature_create_patch_face_list(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("name", "Default").pretty_name("Patch Name").description("The name for the created patch");
-  options.add_option("face_list", std::vector<Uint>()).pretty_name("Face List").description("The list of faces that make up the patch. Numbers are as given in the default patch");
+  options.add("name", "Default").pretty_name("Patch Name").description("The name for the created patch");
+  options.add("face_list", std::vector<Uint>()).pretty_name("Face List").description("The list of faces that make up the patch. Numbers are as given in the default patch");
 }
 
 void BlockArrays::signal_create_patch_face_list(SignalArgs& args)
@@ -1795,15 +1861,15 @@ void BlockArrays::signature_extrude_blocks(SignalArgs& args)
 {
   SignalOptions options(args);
 
-  options.add_option("positions", std::vector<Real>())
+  options.add("positions", std::vector<Real>())
     .pretty_name("Positions")
     .description("Spanwise coordinate for each new spanwise layer of points. Values must ne greater than 0");
 
-  options.add_option("nb_segments", std::vector<Uint>())
+  options.add("nb_segments", std::vector<Uint>())
     .pretty_name("Nb Segments")
     .description("Number of spanwise segments for each block");
 
-  options.add_option("gradings", std::vector<Real>())
+  options.add("gradings", std::vector<Real>())
     .pretty_name("Gradings")
     .description("Uniform grading definition in the spanwise direction for each block");
 }
@@ -1819,7 +1885,7 @@ void BlockArrays::signal_extrude_blocks(SignalArgs& args)
 void BlockArrays::signature_create_mesh(SignalArgs& args)
 {
   SignalOptions options(args);
-  options.add_option("output_mesh", URI())
+  options.add("output_mesh", URI())
     .supported_protocol(cf3::common::URI::Scheme::CPATH)
     .pretty_name("Output Mesh")
     .description("URI to a mesh in which to create the output");

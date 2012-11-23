@@ -9,6 +9,8 @@
 
 #include <iostream>
 
+#include "common/Log.hpp"
+
 #include "common/PropertyList.hpp"
 #include "common/StringConversion.hpp"
 
@@ -100,7 +102,10 @@ protected: // helper function
   {
     using namespace common;
 
-    RDSolver& mysolver = *this->parent()->handle<CellTerm>()->solver().handle<RDSolver>();
+//    CFinfo << "CHANGE ELEMS" << CFendl;
+    //change_elements();
+
+    RDSolver& mysolver = *this->parent()->template handle<CellTerm>()->solver().template handle<RDSolver>();
     rkorder = mysolver.properties().template value<Uint>("rkorder");
     step    = mysolver.iterative_solver().properties().template value<Uint>("iteration");
     dt      = mysolver.time_stepping().get_child("Time")->options().option("time_step").template value<Real>();
@@ -109,13 +114,14 @@ protected: // helper function
 
     ksolutions.clear();
     ksolutions.push_back( follow_link( mysolver.fields().get_child( Tags::solution() ))->handle<mesh::Field>() );
+
     for ( Uint kstep = 1; kstep < rkorder; ++kstep)
     {
-      ksolutions.push_back( follow_link( mysolver.fields().get_child( Tags::solution() + to_str(kstep) ))->handle<mesh::Field>() );
+      ksolutions.push_back( follow_link( mysolver.fields().get_child( std::string(Tags::solution()) + "-" + to_str(kstep) + "dt" ))->handle<mesh::Field>() );
     }
 
-//    std::cout << "RKLDA   rkorder : " << rkorder << std::endl;
-//    std::cout << "RKLDA   step    : " << step    << std::endl;
+    std::cout << "RKLDA   rkorder : " << rkorder << std::endl;
+    std::cout << "RKLDA   step    : " << step    << std::endl;
 
     rkalphas.resize(rkorder,rkorder);
     rkbetas.resize(rkorder,rkorder);

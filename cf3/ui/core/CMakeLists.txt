@@ -15,15 +15,19 @@ NLog.hpp
 NRemoteFSBrowser.hpp
 NRoot.hpp
 NTree.hpp
+NScriptEngine.hpp
 PropertyModel.hpp
 RemoteDispatcher.hpp
+SSHTunnel.hpp
 TreeNode.hpp
 TreeThread.hpp
 NetworkThread.hpp
 )
 
 # Create the moc files
-QT4_WRAP_CPP(coolfluid_ui_core_moc_files ${coolfluid_ui_core_moc_classes})
+if( QT4_FOUND )
+  QT4_WRAP_CPP(coolfluid_ui_core_moc_files ${coolfluid_ui_core_moc_classes})
+endif()
 
 # Add the project files (including the moc files)
 list( APPEND coolfluid_ui_core_files
@@ -63,10 +67,14 @@ NRoot.cpp
 NRoot.hpp
 NTree.cpp
 NTree.hpp
+NScriptEngine.cpp
+NScriptEngine.hpp
 PropertyModel.cpp
 PropertyModel.hpp
 RemoteDispatcher.cpp
 RemoteDispatcher.hpp
+SSHTunnel.cpp
+SSHTunnel.hpp
 ThreadManager.cpp
 ThreadManager.hpp
 TreeNode.cpp
@@ -79,5 +87,11 @@ list( APPEND coolfluid_ui_core_cflibs coolfluid_ui_network coolfluid_ui_common c
 
 # Use Qt Libraries
 list( APPEND coolfluid_ui_core_libs ${QT_LIBRARIES} )
+
+if( CF3_ENABLE_GUI AND QT4_FOUND )
+    set( coolfluid_ui_core_condition TRUE )
+else()
+    set( coolfluid_ui_core_condition FALSE )
+endif()
 
 coolfluid_add_library(coolfluid_ui_core)

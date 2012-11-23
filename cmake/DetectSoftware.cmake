@@ -2,6 +2,11 @@
 # finding boost (essential)
 
 include( DetectBoost )
+# find Eigen (falls back to included code if not found)
+find_package(Eigen3 QUIET)
+if(EIGEN3_FOUND)
+  include_directories(${EIGEN3_INCLUDE_DIR}) # must be before the included Eigen, while we still include a copy
+endif()
 
 ##############################################################################
 # finding MPI (essential) must be after the GlobalOptions
@@ -116,6 +121,6 @@ if( CF3_ENABLE_PYTHON )
   if(CF3_HAVE_PYTHONLIBS AND CF3_HAVE_PYTHONINTERP AND Boost_PYTHON_FOUND)
     set(CF3_HAVE_PYTHON ON CACHE INTERNAL   "Python Features can be built")
   endif()
-  coolfluid_set_feature(Python CF3_HAVE_PYTHON "Python interface")
+  coolfluid_set_feature(Python ${CF3_HAVE_PYTHON} "Python interface")
 
 endif()

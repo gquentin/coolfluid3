@@ -30,6 +30,14 @@ namespace mesh {
 ///    topology/right   (bdry)
 ///    topology/bottom  (bdry)
 ///    topology/top     (bdry)
+/// The topology created for boxes:
+///    topology/interior
+///    topology/left    (bdry)
+///    topology/right   (bdry)
+///    topology/bottom  (bdry)
+///    topology/top     (bdry)
+///    topology/back     (bdry)
+///    topology/front     (bdry)
 /// @author Willem Deconinck
 class Mesh_API SimpleMeshGenerator : public MeshGenerator {
 
@@ -55,12 +63,22 @@ private: // functions
   /// Create a rectangle
   void create_rectangle();
 
+  /// Create a box
+  void create_box();
+
+  /// Helper function to get a linear index given indices i,j,k
+  Uint node_idx(const Uint i, const Uint j, const Uint k, const Uint Nx, const Uint Ny, const Uint Nz);
+
+  /// Helper function to get a linear index given indices i,j,k
+  Uint elem_idx(const Uint i, const Uint j, const Uint k, const Uint Nx, const Uint Ny, const Uint Nz);
+
 protected: // data
 
   std::vector<Uint> m_nb_cells;  ///< Number of cells in every direction
   std::vector<Real> m_lengths;   ///< Lengths in every direction
   std::vector<Real> m_offsets;   ///< Offset in every direction (coordinate of bottom-left point)
 
+  Uint m_coord_dim;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

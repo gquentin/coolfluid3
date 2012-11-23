@@ -92,9 +92,11 @@ struct FieldBase
   /// Construct a new field placeholder
   /// @param name Variable name for the represented quantity (i.e. Temperature)
   /// @param field_tag Tag to identify the field
-  FieldBase(const std::string& name, const std::string& field_tag) :
+  /// @param space_lib_name The name of the space library used for the field
+  FieldBase(const std::string& name, const std::string& field_tag, const std::string& space_lib_name = "geometry") :
     m_name(name),
-    m_field_tag(field_tag)
+    m_field_tag(field_tag),
+    m_space_lib_name(space_lib_name)
   {
   }
 
@@ -108,9 +110,15 @@ struct FieldBase
     return m_field_tag;
   }
 
+  inline const std::string& space_lib_name() const
+  {
+    return m_space_lib_name;
+  }
+
 private:
   std::string m_name;
   std::string m_field_tag;
+  std::string m_space_lib_name;
 };
 
 /// Field data for a scalar field
@@ -118,6 +126,7 @@ struct ScalarField : FieldBase
 {
   ScalarField() : FieldBase() {}
   ScalarField(const std::string& varname, const std::string& field_tag) : FieldBase(varname, field_tag) {}
+  ScalarField(const std::string& varname, const std::string& field_tag, const std::string& space_lib_name) : FieldBase(varname, field_tag, space_lib_name) {}
 };
 
 /// Field data for a vector having the dimension of the problem
@@ -125,6 +134,7 @@ struct VectorField : FieldBase
 {
   VectorField() : FieldBase() {}
   VectorField(const std::string& varname, const std::string& field_tag) : FieldBase(varname, field_tag) {}
+  VectorField(const std::string& varname, const std::string& field_tag, const std::string& space_lib_name) : FieldBase(varname, field_tag, space_lib_name) {}
 };
 
 /// Shorthand for terminals containing a numbered variable
@@ -139,32 +149,32 @@ struct NumberedTermType
 };
 
 template<Uint I, typename T>
-struct MeshTerm :
-  boost::proto::extends< typename NumberedTermType<I, T>::type, MeshTerm<I, T> >
+struct FieldVariable :
+  boost::proto::extends< typename NumberedTermType<I, T>::type, FieldVariable<I, T> >
 {
-  typedef boost::proto::extends< typename NumberedTermType<I, T>::type, MeshTerm<I, T> > base_type;
+  typedef boost::proto::extends< typename NumberedTermType<I, T>::type, FieldVariable<I, T> > base_type;
 
-  MeshTerm() : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>())) {}
-
-  template<typename T1>
-  MeshTerm(const T1& par1) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1))) {}
+  FieldVariable() : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>())) {}
 
   template<typename T1>
-  MeshTerm(T1& par1) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1))) {}
+  FieldVariable(const T1& par1) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1))) {}
+
+  template<typename T1>
+  FieldVariable(T1& par1) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1))) {}
 
   template<typename T1, typename T2>
-  MeshTerm(const T1& par1, const T2& par2) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2))) {}
+  FieldVariable(const T1& par1, const T2& par2) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2))) {}
 
   template<typename T1, typename T2>
-  MeshTerm(T1& par1, T2& par2) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2))) {}
+  FieldVariable(T1& par1, T2& par2) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2))) {}
 
   template<typename T1, typename T2, typename T3>
-  MeshTerm(const T1& par1, const T2& par2, const T3& par3) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2, par3))) {}
+  FieldVariable(const T1& par1, const T2& par2, const T3& par3) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2, par3))) {}
 
   template<typename T1, typename T2, typename T3>
-  MeshTerm(T1& par1, T2& par2, T3& par3) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2, par3))) {}
+  FieldVariable(T1& par1, T2& par2, T3& par3) : base_type(boost::proto::make_expr<boost::proto::tag::terminal>(Var<boost::mpl::int_<I>, T>(par1, par2, par3))) {}
 
-  BOOST_PROTO_EXTENDS_USING_ASSIGN(MeshTerm)
+  BOOST_PROTO_EXTENDS_USING_ASSIGN(FieldVariable)
 };
 
 /// Match field types
@@ -184,6 +194,13 @@ struct ZeroTag
 /// Placeholder for the zero matrix
 static boost::proto::terminal<ZeroTag>::type _0 = {};
 
+struct IdentityTag
+{
+};
+
+/// Placeholder for the identity matrix
+static boost::proto::terminal<IdentityTag>::type _I = {};
+
 /// Wrap std::cout
 static boost::proto::terminal< std::ostream & >::type _cout = {std::cout};
 
@@ -199,6 +216,12 @@ inline Real max(const Real a, const Real b)
   return a > b ? a : b;
 }
 
+/// Minimum between two scalars
+inline Real min(const Real a, const Real b)
+{
+  return a < b ? a : b;
+}
+
 // Wrap some math functions
 static boost::proto::terminal< double(*)(double) >::type const _sin = {&sin};
 static boost::proto::terminal< double(*)(double, double) >::type const _atan2 = {&atan2};
@@ -207,6 +230,7 @@ static boost::proto::terminal< double(*)(double) >::type const _exp = {&exp};
 static boost::proto::terminal< double(*)(double) >::type const _sqrt = {&sqrt};
 static boost::proto::terminal< double(*)(double) >::type const _abs = {&fabs};
 static boost::proto::terminal< double(*)(double, double) >::type const _max = {&max};
+static boost::proto::terminal< double(*)(double, double) >::type const _min = {&min};
 
 } // namespace Proto
 } // namespace actions

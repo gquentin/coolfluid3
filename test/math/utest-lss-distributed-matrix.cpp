@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE( system_solve )
   // system
   boost::shared_ptr<LSS::System> sys_ptr = common::allocate_component<LSS::System>("system");
   LSS::System& sys = *sys_ptr;
-  sys.options().option("solver").change_value(boost::lexical_cast<std::string>("Trilinos"));
+  sys.options().option("matrix_builder").change_value(boost::lexical_cast<std::string>(m_argv[1]));
   sys.create(cp,m.nbeqs,m.column_indices,m.rowstart_positions);
   sys.reset();
 
@@ -133,29 +133,6 @@ sys.print("sys_test_assembly_bc_" + boost::lexical_cast<std::string>(m.irank) + 
 
 
 //sys.print("sys_prebc_bc_" + boost::lexical_cast<std::string>(m.irank) + ".plt");
-
-  // write a settings file for trilinos, solving with plain bicgstab, no preconditioning
-  if (m.irank==0)
-  {
-    std::ofstream trilinos_xml("trilinos_settings.xml");
-    trilinos_xml << "<ParameterList>\n";
-    trilinos_xml << "  <Parameter name=\"Linear Solver Type\" type=\"string\" value=\"AztecOO\"/>\n";
-    trilinos_xml << "  <ParameterList name=\"Linear Solver Types\">\n";
-    trilinos_xml << "    <ParameterList name=\"AztecOO\">\n";
-    trilinos_xml << "      <ParameterList name=\"Forward Solve\">\n";
-    trilinos_xml << "        <ParameterList name=\"AztecOO Settings\">\n";
-    trilinos_xml << "          <Parameter name=\"Aztec Solver\" type=\"string\" value=\"GMRES\"/>\n";
-    trilinos_xml << "        </ParameterList>\n";
-    trilinos_xml << "        <Parameter name=\"Max Iterations\" type=\"int\" value=\"5000\"/>\n";
-    trilinos_xml << "        <Parameter name=\"Tolerance\" type=\"double\" value=\"1e-13\"/>\n";
-    trilinos_xml << "      </ParameterList>\n";
-    trilinos_xml << "    </ParameterList>\n";
-    trilinos_xml << "  </ParameterList>\n";
-    trilinos_xml << "  <Parameter name=\"Preconditioner Type\" type=\"string\" value=\"None\"/>\n";
-    trilinos_xml << "</ParameterList>\n";
-    trilinos_xml.close();
-  }
-  common::PE::Comm::instance().barrier();
 
 //  // filling the system with prescribed values
 //  sys.reset();

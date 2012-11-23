@@ -4,6 +4,9 @@
 // GNU Lesser General Public License version 3 (LGPLv3).
 // See doc/lgpl.txt and doc/gpl.txt for the license text.
 
+
+#include <iostream>
+
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "Test module for CGNS"
 #include <boost/test/unit_test.hpp>
@@ -653,7 +656,7 @@ BOOST_AUTO_TEST_CASE ( WriteStructured )
 
 BOOST_AUTO_TEST_CASE( ReadCGNS_Unstructured )
 {
-  Core::instance().environment().options().configure_option("log_level",(Uint)DEBUG);
+  Core::instance().environment().options().set("log_level",(Uint)DEBUG);
   boost::shared_ptr< MeshReader > meshreader = build_component_abstract_type<MeshReader>("cf3.mesh.CGNS.Reader","meshreader");
 
   // the mesh to store in

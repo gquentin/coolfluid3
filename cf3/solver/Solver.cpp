@@ -24,9 +24,11 @@
 
 namespace cf3 {
 namespace solver {
-
+  
 using namespace common;
 using namespace mesh;
+
+RegistTypeInfo<Solver, LibSolver> regist_Solver_type;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,11 +38,6 @@ struct Solver::Implementation {
     m_component(component),
     m_field_manager(*component.create_static_component<FieldManager>("FieldManager"))
   {
-    m_component.options().add_option(Tags::physical_model(), m_physics)
-      .pretty_name("Physical Model")
-      .description("Physical Model")
-      .link_to(&m_physics)
-      .attach_trigger(boost::bind(&Implementation::trigger_physical_model, *this));
   }
 
   void trigger_domain()
@@ -49,20 +46,6 @@ struct Solver::Implementation {
     // errors are reported through domain() on access.
     // Rationale: the URI may be set before the domain is created
     m_domain = Handle<Domain>(m_component.access_component(m_domain_uri));
-  }
-
-  void trigger_physical_model()
-  {
-    m_field_manager.options().configure_option("variable_manager", m_component.options().option("physical_model").value< Handle<physics::PhysModel> >()->variable_manager().handle<math::VariableManager>());
-  }
-
-  // Checked access to the physics
-  physics::PhysModel& physics()
-  {
-    if(is_null(m_physics))
-      throw SetupError(FromHere(), "No physical model configured for " + m_component.uri().string());
-
-    return *m_physics;
   }
 
   // Checked access to the domain
@@ -88,8 +71,6 @@ struct Solver::Implementation {
   URI m_domain_uri;
   Handle<Domain> m_domain;
   FieldManager& m_field_manager;
-
-  Handle<physics::PhysModel> m_physics;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,12 +88,17 @@ Solver::Solver ( const std::string& name  ) :
 
   // options
 
-  options().add_option(Tags::domain(), URI("cpath:../Domain"))
+  options().add(Tags::domain(), URI("cpath:../Domain"))
       .description("Domain to solve")
       .pretty_name("Domain")
       .link_to(&m_implementation->m_domain_uri)
       .attach_trigger(boost::bind(&Implementation::trigger_domain, m_implementation.get()));
-
+      
+  options().add(Tags::physical_model(), m_physics)
+      .pretty_name("Physical Model")
+      .description("Physical Model")
+      .link_to(&m_physics)
+      .attach_trigger(boost::bind(&Solver::trigger_physical_model, this));
 }
 
 
@@ -139,8 +125,17 @@ Domain& Solver::domain()
 
 physics::PhysModel& Solver::physics()
 {
-  return m_implementation->physics();
+  if(is_null(m_physics))
+    throw SetupError(FromHere(), "No physical model configured for " + uri().string());
+
+  return *m_physics;
 }
+
+void Solver::trigger_physical_model()
+{
+  m_implementation->m_field_manager.options().set("variable_manager", m_physics->variable_manager().handle<math::VariableManager>());
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////

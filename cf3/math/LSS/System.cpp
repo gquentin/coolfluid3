@@ -19,6 +19,7 @@
 
 #include "common/XML/Protocol.hpp"
 #include "common/XML/SignalOptions.hpp"
+#include <common/PropertyList.hpp>
 
 #include "math/LSS/System.hpp"
 #include "math/LSS/Matrix.hpp"
@@ -39,13 +40,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef CF3_HAVE_TRILINOS
-  #include "math/LSS/Trilinos/TrilinosMatrix.hpp"
-  #include "math/LSS/Trilinos/TrilinosVector.hpp"
-#endif // cf3_HAVE_TRILINOS
-
-////////////////////////////////////////////////////////////////////////////////////////////
-
 using namespace cf3;
 using namespace cf3::math;
 
@@ -56,51 +50,96 @@ common::ComponentBuilder < LSS::System, LSS::System, LSS::LibLSS > System_Builde
 LSS::System::System(const std::string& name) :
   Component(name)
 {
-  options().add_option( "solver" , "Trilinos" );
+  options().add( "matrix_builder" , "cf3.math.LSS.TrilinosFEVbrMatrix")
+    .pretty_name("Matrix Builder")
+    .description("Name for the builder used to create the LSS matrix")
+    .mark_basic();
+
+  options().add( "vector_builder" , "")
+    .pretty_name("Vector Builder")
+    .description("Name for the builder used for the vectors. If left empty, this is obtained from the vector_type property of the matrix")
+    .mark_basic();
+
+  options().add("solution_strategy", "cf3.math.LSS.TrilinosStratimikosStrategy")
+    .pretty_name("Solution Strategy")
+    .description("Name of the builder that will be used to create the solution strategy")
+    .mark_basic();
 
   regist_signal("print_system")
     .connect(boost::bind( &System::signal_print, this, _1 ))
     .description("Write the system to disk as a tecplot file, for debugging purposes.")
     .pretty_name("Print System")
     .signature(boost::bind( &System::signature_print, this, _1 ));
-
-  m_mat.reset();
-  m_sol.reset();
-  m_rhs.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 void LSS::System::create(cf3::common::PE::CommPattern& cp, Uint neq, std::vector<Uint>& node_connectivity, std::vector<Uint>& starting_indices)
 {
+  if (is_created())
+    destroy();
 
-  if (is_created()) destroy();
-  std::string solvertype=options().option("solver").value_str();
+  const std::string matrix_builder = options().option("matrix_builder").value_str();
+  m_mat = create_component<LSS::Matrix>("Matrix", matrix_builder);
 
-  if (solvertype=="EmptyLSS"){
-      m_mat=create_component<LSS::EmptyLSSMatrix>("Matrix");
-      m_rhs=create_component<LSS::EmptyLSSVector>("RHS");
-      m_sol=create_component<LSS::EmptyLSSVector>("Solution");
-  }
+  std::string vector_builder = options().option("vector_builder").value_str();
+  if(vector_builder.empty())
+    vector_builder = m_mat->properties().value_str("vector_type");
 
-  if (solvertype=="Trilinos"){
-    #ifdef CF3_HAVE_TRILINOS
-    m_mat=create_component<LSS::TrilinosMatrix>("Matrix");
-    m_rhs=create_component<LSS::TrilinosVector>("RHS");
-    m_sol=create_component<LSS::TrilinosVector>("Solution");
-    #else
-      throw common::SetupError(FromHere(),"Trilinos is selected for linear solver, but COOLFluiD was not compiled with it.");
-    #endif
-  }
+  m_rhs = create_component<LSS::Vector>("RHS", vector_builder);
+  m_sol = create_component<LSS::Vector>("Solution", vector_builder);
 
   m_rhs->create(cp,neq);
   m_sol->create(cp,neq);
   m_mat->create(cp,neq,node_connectivity,starting_indices,*m_sol,*m_rhs);
+
+  m_rhs->mark_basic();
+  m_sol->mark_basic();
+  m_mat->mark_basic();
+
+  m_solution_strategy = create_component<SolutionStrategy>("SolutionStrategy", options().option("solution_strategy").value<std::string>());
+  m_solution_strategy->set_matrix(m_mat);
+  m_solution_strategy->set_solution(m_sol);
+  m_solution_strategy->set_rhs(m_rhs);
+  m_solution_strategy->mark_basic();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-void LSS::System::swap(const Handle<LSS::Matrix>& matrix, const Handle<LSS::Vector>& solution, const Handle<LSS::Vector>& rhs)
+void LSS::System::create_blocked(common::PE::CommPattern& cp, const VariablesDescriptor& vars, std::vector< Uint >& node_connectivity, std::vector< Uint >& starting_indices)
+{
+  if (is_created())
+    destroy();
+
+  const std::string matrix_builder = options().option("matrix_builder").value_str();
+  m_mat = create_component<LSS::Matrix>("Matrix", matrix_builder);
+
+  std::string vector_builder = options().option("vector_builder").value_str();
+  if(vector_builder.empty())
+    vector_builder = m_mat->properties().value_str("vector_type");
+
+  m_rhs = create_component<LSS::Vector>("RHS", vector_builder);
+  m_sol = create_component<LSS::Vector>("Solution", vector_builder);
+
+  m_rhs->create_blocked(cp,vars);
+  m_sol->create_blocked(cp,vars);
+  m_mat->create_blocked(cp,vars,node_connectivity,starting_indices,*m_sol,*m_rhs);
+
+  m_rhs->mark_basic();
+  m_sol->mark_basic();
+  m_mat->mark_basic();
+
+  m_solution_strategy = create_component<SolutionStrategy>("SolutionStrategy", options().option("solution_strategy").value<std::string>());
+  m_solution_strategy->set_matrix(m_mat);
+  m_solution_strategy->set_solution(m_sol);
+  m_solution_strategy->set_rhs(m_rhs);
+  m_solution_strategy->mark_basic();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+void LSS::System::swap( const boost::shared_ptr< LSS::Matrix >& matrix, const boost::shared_ptr< LSS::Vector >& solution, const boost::shared_ptr< LSS::Vector >& rhs )
 {
   if (m_mat->is_swappable(*solution,*rhs))
   {
@@ -112,10 +151,23 @@ void LSS::System::swap(const Handle<LSS::Matrix>& matrix, const Handle<LSS::Vect
     throw common::BadValue(FromHere(),"Inconsistent number of equations.");
   if ((matrix->blockcol_size()!=solution->blockrow_size())||(matrix->blockcol_size()!=rhs->blockrow_size()))
     throw common::BadValue(FromHere(),"Inconsistent number of block rows.");
-  if (m_mat!=matrix) m_mat=matrix;
-  if (m_rhs!=rhs) m_rhs=rhs;
-  if (m_sol!=solution) m_sol=solution;
-  options().option("solver").change_value(matrix->solvertype());
+
+  if(is_not_null(get_child("Matrix")))
+    remove_component("Matrix");
+  if(is_not_null(get_child("Solution")))
+    remove_component("Solution");
+  if(is_not_null(get_child("RHS")))
+    remove_component("RHS");
+
+  m_mat = make_handle(matrix);
+  m_rhs = make_handle(rhs);
+  m_sol = make_handle(solution);
+
+  add_component(matrix);
+  add_component(solution);
+  add_component(rhs);
+
+  options().option("matrix_builder").change_value(matrix->solvertype());
   } else {
     throw common::NotSupported(FromHere(),"System of '" + matrix->name() + "' x '" + solution->name() + "' = '" + rhs->name() + "' is incompatible." );
   }
@@ -125,6 +177,16 @@ void LSS::System::swap(const Handle<LSS::Matrix>& matrix, const Handle<LSS::Vect
 
 void LSS::System::destroy()
 {
+  if(is_not_null(get_child("SolutionStrategy")))
+    remove_component("SolutionStrategy");
+  if(is_not_null(get_child("Matrix")))
+    remove_component("Matrix");
+  if(is_not_null(get_child("Solution")))
+    remove_component("Solution");
+  if(is_not_null(get_child("RHS")))
+    remove_component("RHS");
+
+  m_solution_strategy.reset();
   m_mat.reset();
   m_sol.reset();
   m_rhs.reset();
@@ -135,7 +197,7 @@ void LSS::System::destroy()
 void LSS::System::solve()
 {
   cf3_assert(is_created());
-  m_mat->solve(*m_sol,*m_rhs);
+  m_solution_strategy->solve();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -173,16 +235,18 @@ void LSS::System::get_values(LSS::BlockAccumulator& values)
 void LSS::System::dirichlet(const Uint iblockrow, const Uint ieq, const Real value, const bool preserve_symmetry)
 {
   cf3_assert(is_created());
+
   if (preserve_symmetry)
   {
-    std::vector<Real> v;
-    m_mat->get_column_and_replace_to_zero(iblockrow,ieq,v);
-    for (int i=0; i<(const int)v.size(); i++)
-      m_rhs->add_value(i,-v[i]*value);
+    m_mat->symmetric_dirichlet(iblockrow, ieq, value, *m_rhs);
   }
-  m_mat->set_row(iblockrow,ieq,1.,0.);
+  else
+  {
+    m_mat->set_row(iblockrow,ieq,1.,0.);
+    m_rhs->set_value(iblockrow,ieq,value);
+  }
+
   m_sol->set_value(iblockrow,ieq,value);
-  m_rhs->set_value(iblockrow,ieq,value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -290,10 +354,11 @@ const bool LSS::System::is_created()
   if (m_mat!=nullptr) if (m_mat->is_created()) numcreated+=1;
   if (m_sol!=nullptr) if (m_sol->is_created()) numcreated+=2;
   if (m_rhs!=nullptr) if (m_rhs->is_created()) numcreated+=4;
+  if (m_solution_strategy!=nullptr) numcreated+=8;
   switch (numcreated) {
     case 0 : return false;
-    case 7 : return true;
-    default: throw common::SetupError(FromHere(),"LSS System is in inconsistent state.");
+    case 15 : return true;
+    default: throw common::SetupError(FromHere(),"LSS System is in inconsistent state: " + common::to_str(numcreated));
   }
 }
 
@@ -312,7 +377,7 @@ void LSS::System::signature_print(common::SignalArgs& args)
 {
   common::XML::SignalOptions options( args );
 
-  options.add_option<std::string>("file_name")
+  options.add<std::string>("file_name")
     .pretty_name("File name")
     .description("tecplot file to print the matrix to");
 }

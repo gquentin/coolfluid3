@@ -19,6 +19,7 @@
 #include "math/LSS/BlockAccumulator.hpp"
 #include "math/LSS/Vector.hpp"
 
+#include "ThyraMultiVector.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -46,7 +47,7 @@ namespace LSS {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-class LSS_API TrilinosVector : public LSS::Vector {
+class LSS_API TrilinosVector : public LSS::Vector, public ThyraMultiVector {
 public:
 
   /// @name CREATION, DESTRUCTION AND COMPONENT SYSTEM
@@ -63,6 +64,7 @@ public:
 
   /// Setup sparsity structure
   void create(common::PE::CommPattern& cp, Uint neq);
+  void create_blocked(common::PE::CommPattern& cp, const VariablesDescriptor& vars);
 
   /// Deallocate underlying data
   void destroy();
@@ -136,6 +138,8 @@ public:
 
   /// Print to file given by filename
   void print(const std::string& filename, std::ios_base::openmode mode = std::ios_base::out );
+  
+  void print_native(ostream& stream);
 
   /// Accessor to the state of create
   const bool is_created() { return m_is_created; };
@@ -160,7 +164,12 @@ public:
   void debug_data(std::vector<Real>& values);
 
   //@} END TEST ONLY
-
+  
+  void signal_print_native(common::SignalArgs& args);
+  
+  Teuchos::RCP< const Thyra::MultiVectorBase< Real > > thyra_vector ( const Teuchos::RCP< const Thyra::VectorSpaceBase< Real > >& space ) const;
+  Teuchos::RCP< Thyra::MultiVectorBase< Real > > thyra_vector ( const Teuchos::RCP< const Thyra::VectorSpaceBase< Real > >& space );
+  
 private:
 
   /// teuchos style smart pointer wrapping an epetra vector

@@ -30,13 +30,14 @@
 #include "mesh/LagrangeP1/Line1D.hpp"
 #include "solver/Model.hpp"
 
-#include "solver/actions/SolveLSS.hpp"
+#include "math/LSS/SolveLSS.hpp"
 #include "solver/actions/Proto/ProtoAction.hpp"
 #include "solver/actions/Proto/Expression.hpp"
 
 #include "Tools/MeshGeneration/MeshGeneration.hpp"
 
-#include "UFEM/LinearSolver.hpp"
+#include "UFEM/LSSAction.hpp"
+#include "UFEM/Solver.hpp"
 #include "UFEM/Tags.hpp"
 
 using namespace cf3;
@@ -67,11 +68,9 @@ struct ProtoHeatFixture
   ProtoHeatFixture() :
     root( Core::instance().root() )
   {
-    solver_config = boost::unit_test::framework::master_test_suite().argv[1];
   }
 
   Component& root;
-  std::string solver_config;
 
 };
 
@@ -85,7 +84,7 @@ BOOST_AUTO_TEST_CASE( InitMPI )
 
 BOOST_AUTO_TEST_CASE( Heat2DParallel)
 {
-  Core::instance().environment().options().configure_option("log_level", 4u);
+  Core::instance().environment().options().set("log_level", 4u);
 
   // Parameters
   Real length            = 5.;
@@ -94,14 +93,12 @@ BOOST_AUTO_TEST_CASE( Heat2DParallel)
   // Setup a model
   Model& model = *root.create_component<Model>("Model");
   Domain& domain = model.create_domain("Domain");
-  UFEM::LinearSolver& solver = *model.create_component<UFEM::LinearSolver>("Solver");
+  UFEM::Solver& solver = *model.create_component<UFEM::Solver>("Solver");
 
-  math::LSS::System& lss = *model.create_component<math::LSS::System>("LSS");
-  lss.options().configure_option("solver", std::string("Trilinos"));
-  solver.options().configure_option("lss", lss.handle<math::LSS::System>());
+  Handle<UFEM::LSSAction> lss_action(solver.add_direct_solver("cf3.UFEM.LSSAction"));
 
   // Proto placeholders
-  MeshTerm<0, ScalarField> temperature("Temperature", UFEM::Tags::solution());
+  FieldVariable<0, ScalarField> temperature("Temperature", UFEM::Tags::solution());
 
   // Allowed elements (reducing this list improves compile times)
   boost::mpl::vector1<mesh::LagrangeP1::Quad2D> allowed_elements;
@@ -110,7 +107,7 @@ BOOST_AUTO_TEST_CASE( Heat2DParallel)
   boost::shared_ptr<UFEM::BoundaryConditions> bc = allocate_component<UFEM::BoundaryConditions>("BoundaryConditions");
 
   // add the top-level actions (assembly, BC and solve)
-  solver
+  *lss_action
     << create_proto_action
     (
       "Assembly",
@@ -121,13 +118,13 @@ BOOST_AUTO_TEST_CASE( Heat2DParallel)
         (
           _A = _0,
           element_quadrature( _A(temperature) += transpose(nabla(temperature)) * nabla(temperature) ),
-          solver.system_matrix += _A
+          lss_action->system_matrix += _A
         )
       )
     )
     << bc
-    << allocate_component<solver::actions::SolveLSS>("SolveLSS")
-    << create_proto_action("Increment", nodes_expression(temperature += solver.solution(temperature)))
+    << allocate_component<math::LSS::SolveLSS>("SolveLSS")
+    << create_proto_action("Increment", nodes_expression(temperature += lss_action->solution(temperature)))
     << create_proto_action("CheckResult", nodes_expression(_check_close(temperature, 10. + 25.*(coordinates(0,0) / length), 1e-6)));
 
   // Setup physics
@@ -141,16 +138,16 @@ BOOST_AUTO_TEST_CASE( Heat2DParallel)
   *blocks.create_blocks(1) << 0 << 1 << 2 << 3;
   *blocks.create_block_subdivisions() << nb_segments << nb_segments;
   *blocks.create_block_gradings() << 1. << 1. << 1. << 1.;
-  
+
   *blocks.create_patch("bottom", 1) << 0 << 1;
   *blocks.create_patch("right", 1) << 1 << 2;
   *blocks.create_patch("top", 1) << 2 << 3;
   *blocks.create_patch("left", 1) << 3 << 0;
-  
-  blocks.partition_blocks(PE::Comm::instance().size(), XX);
+
+  blocks.partition_blocks(PE::Comm::instance().size(), YY);
   blocks.create_mesh(mesh);
 
-  lss.matrix()->options().configure_option("settings_file", std::string(boost::unit_test::framework::master_test_suite().argv[1]));
+  lss_action->options().set("regions", std::vector<URI>(1, mesh.topology().uri()));
 
   // Set boundary conditions
   bc->add_constant_bc("left", "Temperature", 10.);

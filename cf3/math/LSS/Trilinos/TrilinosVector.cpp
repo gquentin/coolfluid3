@@ -7,9 +7,17 @@
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "common/Assertions.hpp"
+#include "common/Builder.hpp"
 #include "common/Log.hpp"
+#include "common/OptionList.hpp"
 #include "common/PE/Comm.hpp"
+#include "common/Signal.hpp"
+
+#include "math/VariablesDescriptor.hpp"
+#include "math/LSS/Trilinos/TrilinosDetail.hpp"
 #include "math/LSS/Trilinos/TrilinosVector.hpp"
+
+#include "Thyra_EpetraThyraWrappers.hpp"
 
 /// @todo remove when no debug any more
 #include "common/PE/debug.hpp"
@@ -29,6 +37,8 @@ using namespace cf3;
 using namespace cf3::math;
 using namespace cf3::math::LSS;
 
+common::ComponentBuilder < LSS::TrilinosVector, LSS::Vector, LSS::LibLSS > TrilinosVector_Builder;
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 TrilinosVector::TrilinosVector(const std::string& name) :
@@ -40,63 +50,44 @@ TrilinosVector::TrilinosVector(const std::string& name) :
   m_converted_indices(0),
   m_comm(common::PE::Comm::instance().communicator())
 {
+  regist_signal( "print_native" )
+      .connect( boost::bind( &TrilinosVector::signal_print_native, this, _1 ) )
+      .description("Prints the native representation of the vector")
+      .pretty_name("Print Native");
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 void TrilinosVector::create(common::PE::CommPattern& cp, Uint neq)
 {
+  boost::shared_ptr<VariablesDescriptor> single_var_descriptor = common::allocate_component<VariablesDescriptor>("SingleVariableDescriptor");
+  single_var_descriptor->options().set(common::Tags::dimension(), neq);
+  single_var_descriptor->push_back("LSSvars", VariablesDescriptor::Dimensionalities::VECTOR);
+  create_blocked(cp, *single_var_descriptor);
+}
+
+void TrilinosVector::create_blocked(common::PE::CommPattern& cp, const VariablesDescriptor& vars)
+{
   // if built
   if (m_is_created) destroy();
-
-  // get global ids vector
-  int *gid=(int*)cp.gid()->pack();
 
   // prepare intermediate data
   int nmyglobalelements=0;
   std::vector<int> myglobalelements(0);
 
-  for (int i=0; i<(const int)cp.isUpdatable().size(); i++)
-    if (cp.isUpdatable()[i])
-    {
-      myglobalelements.push_back((int)gid[i]);
-      ++nmyglobalelements;
-    }
-
-  // process local to matrix local numbering mapper
-  int iupd=0;
-  int ighost=nmyglobalelements;
-  m_p2m.resize(0);
-  m_p2m.reserve(cp.isUpdatable().size());
-  for (int i=0; i<(const int)cp.isUpdatable().size(); i++)
-  {
-    if (cp.isUpdatable()[i])
-    {
-      m_p2m.push_back(iupd++);
-    }
-    else
-    {
-      myglobalelements.push_back((int)gid[i]);
-      m_p2m.push_back(ighost++);
-    }
-  }
+  create_map_data(cp, vars, m_p2m, myglobalelements, nmyglobalelements);
 
   // map (its actually blockmap insteady of rowmap, to involve ghosts)
-  Epetra_BlockMap map(-1,cp.isUpdatable().size(),&myglobalelements[0],neq,0,m_comm);
+  Epetra_Map map(-1,cp.isUpdatable().size()*vars.size(),&myglobalelements[0],0,m_comm);
 
-  // create matrix
+  // create vector
   m_vec=Teuchos::rcp(new Epetra_Vector(map));
-/*must be a bug in Trilinos, Epetra_FEVbrMatrix constructor is in Copy mode but it hangs up anyway
-  more funny, when it gets out of scope and gets dealloc'd, everything survives according to memcheck
-  map.~Epetra_BlockMap();
-*/
 
-  // set private data
-  delete[] gid;
-  m_neq=neq;
+  m_neq=vars.size();
   m_blockrow_size=cp.isUpdatable().size();
   m_is_created=true;
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -115,10 +106,7 @@ void TrilinosVector::destroy()
 void TrilinosVector::set_value(const Uint irow, const Real value)
 {
   cf3_assert(m_is_created);
-  const int iblockrow=m_p2m[irow/m_neq];
-  const int ieq=irow%m_neq;
-  cf3_assert(iblockrow<m_blockrow_size);
-  (*m_vec)[iblockrow*m_neq+ieq]=value;
+  (*m_vec)[m_p2m[irow]]=value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,10 +114,7 @@ void TrilinosVector::set_value(const Uint irow, const Real value)
 void TrilinosVector::add_value(const Uint irow, const Real value)
 {
   cf3_assert(m_is_created);
-  const int iblockrow=m_p2m[irow/m_neq];
-  const int ieq=irow%m_neq;
-  cf3_assert(iblockrow<m_blockrow_size);
-  (*m_vec)[iblockrow*m_neq+ieq]+=value;
+  (*m_vec)[m_p2m[irow]]+=value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -137,10 +122,7 @@ void TrilinosVector::add_value(const Uint irow, const Real value)
 void TrilinosVector::get_value(const Uint irow, Real& value)
 {
   cf3_assert(m_is_created);
-  const int iblockrow=m_p2m[irow/m_neq];
-  const int ieq=irow%m_neq;
-  cf3_assert(iblockrow<m_blockrow_size);
-  value=(*m_vec)[iblockrow*m_neq+ieq];
+  value=(*m_vec)[m_p2m[irow]];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,7 +131,7 @@ void TrilinosVector::set_value(const Uint iblockrow, const Uint ieq, const Real 
 {
   cf3_assert(m_is_created);
   cf3_assert(iblockrow<m_blockrow_size);
-  (*m_vec)[m_p2m[iblockrow]*m_neq+ieq]=value;
+  (*m_vec)[m_p2m[iblockrow*m_neq+ieq]]=value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +140,7 @@ void TrilinosVector::add_value(const Uint iblockrow, const Uint ieq, const Real 
 {
   cf3_assert(m_is_created);
   cf3_assert(iblockrow<m_blockrow_size);
-  (*m_vec)[m_p2m[iblockrow]*m_neq+ieq]+=value;
+  (*m_vec)[m_p2m[iblockrow*m_neq+ieq]]+=value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -167,7 +149,7 @@ void TrilinosVector::get_value(const Uint iblockrow, const Uint ieq, Real& value
 {
   cf3_assert(m_is_created);
   cf3_assert(iblockrow<m_blockrow_size);
-  value=(*m_vec)[m_p2m[iblockrow]*m_neq+ieq];
+  value=(*m_vec)[m_p2m[iblockrow*m_neq+ieq]];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -182,9 +164,8 @@ void TrilinosVector::set_rhs_values(const BlockAccumulator& values)
   double *vals=(double*)&values.rhs[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      (*m_vec)[idx*m_neq+j]=*vals++;
+      (*m_vec)[m_p2m[values.indices[i]*m_neq+j]]=*vals++;
   }
 }
 
@@ -200,9 +181,8 @@ void TrilinosVector::add_rhs_values(const BlockAccumulator& values)
   double *vals=(double*)&values.rhs[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      (*m_vec)[idx*m_neq+j]+=*vals++;
+      (*m_vec)[m_p2m[values.indices[i]*m_neq+j]]+=*vals++;
   }
 }
 
@@ -218,9 +198,8 @@ void TrilinosVector::get_rhs_values(BlockAccumulator& values)
   double *vals=(double*)&values.rhs[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      *vals++=(*m_vec)[idx*m_neq+j];
+      *vals++=(*m_vec)[m_p2m[values.indices[i]*m_neq+j]];
   }
 }
 
@@ -236,9 +215,8 @@ void TrilinosVector::set_sol_values(const BlockAccumulator& values)
   double *vals=(double*)&values.sol[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      (*m_vec)[idx*m_neq+j]=*vals++;
+      (*m_vec)[m_p2m[values.indices[i]*m_neq+j]]=*vals++;
   }
 }
 
@@ -254,9 +232,8 @@ void TrilinosVector::add_sol_values(const BlockAccumulator& values)
   double *vals=(double*)&values.sol[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      (*m_vec)[idx*m_neq+j]+=*vals++;
+      (*m_vec)[m_p2m[values.indices[i]*m_neq+j]]+=*vals++;
   }
 }
 
@@ -272,9 +249,8 @@ void TrilinosVector::get_sol_values(BlockAccumulator& values)
   double *vals=(double*)&values.sol[0];
   for (int i=0; i<(const int)numblocks; i++)
   {
-    const int idx=m_p2m[values.indices[i]];
     for (int j=0; j<(const int)m_neq; j++)
-      *vals++=(*m_vec)[idx*m_neq+j];
+      *vals++=(*m_vec)[m_p2m[values.indices[i]*m_neq+j]];
   }
 }
 
@@ -295,7 +271,7 @@ void TrilinosVector::get( boost::multi_array<Real, 2>& data)
   cf3_assert(data.shape()[1]==m_neq);
   for (int i=0; i<(const int)m_blockrow_size; i++)
     for (int j=0; j<(const int)m_neq; j++)
-      data[i][j]=(*m_vec)[m_p2m[i]*m_neq+j];
+      data[i][j]=(*m_vec)[m_p2m[i*m_neq+j]];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -307,7 +283,7 @@ void TrilinosVector::set( boost::multi_array<Real, 2>& data)
   cf3_assert(data.shape()[1]==m_neq);
   for (int i=0; i<(const int)m_blockrow_size; i++)
     for (int j=0; j<(const int)m_neq; j++)
-      (*m_vec)[m_p2m[i]*m_neq+j]=data[i][j];
+      (*m_vec)[m_p2m[i*m_neq+j]]=data[i][j];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -318,7 +294,7 @@ void TrilinosVector::print(common::LogStream& stream)
   {
     for (int i=0; i<(const int)m_blockrow_size; i++)
       for (int j=0; j<(const int)m_neq; j++)
-        stream << 0 << " " << -(int)(i*m_neq+j) << " " << (*m_vec)[m_p2m[i]*m_neq+j] << "\n";
+        stream << 0 << " " << -(int)(i*m_neq+j) << " " << (*m_vec)[m_p2m[i*m_neq+j]] << "\n";
     stream << "# name:                 " << name() << "\n";
     stream << "# type_name:            " << type_name() << "\n";
     stream << "# process:              " << m_comm.MyPID() << "\n";
@@ -338,7 +314,7 @@ void TrilinosVector::print(std::ostream& stream)
   {
     for (int i=0; i<(const int)m_blockrow_size; i++)
       for (int j=0; j<(const int)m_neq; j++)
-        stream << 0 << " " << -(int)(i*m_neq+j) << " " << (*m_vec)[m_p2m[i]*m_neq+j] << "\n" << std::flush;
+        stream << 0 << " " << -(int)(i*m_neq+j) << " " << (*m_vec)[m_p2m[i*m_neq+j]] << "\n" << std::flush;
     stream << "# name:                 " << name() << "\n";
     stream << "# type_name:            " << type_name() << "\n";
     stream << "# process:              " << m_comm.MyPID() << "\n";
@@ -363,14 +339,42 @@ void TrilinosVector::print(const std::string& filename, std::ios_base::openmode 
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
+void TrilinosVector::print_native(ostream& stream)
+{
+  m_vec->Print(stream);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
 void TrilinosVector::debug_data(std::vector<Real>& values)
 {
   cf3_assert(m_is_created);
   values.clear();
   for (int i=0; i<(const int)m_blockrow_size; i++)
     for (int j=0; j<(const int)m_neq; j++)
-      values.push_back((*m_vec)[m_p2m[i]*m_neq+j]);
+      values.push_back((*m_vec)[m_p2m[i*m_neq+j]]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
+void TrilinosVector::signal_print_native(common::SignalArgs& args)
+{
+  print_native(std::cout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+Teuchos::RCP< const Thyra::MultiVectorBase< Real > > TrilinosVector::thyra_vector ( const Teuchos::RCP< const Thyra::VectorSpaceBase< Real > >& space ) const
+{
+  return Thyra::create_Vector(m_vec, space);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+Teuchos::RCP< Thyra::MultiVectorBase< Real > > TrilinosVector::thyra_vector ( const Teuchos::RCP< const Thyra::VectorSpaceBase< Real > >& space )
+{
+  return Thyra::create_Vector(m_vec, space);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////

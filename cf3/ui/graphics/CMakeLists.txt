@@ -28,6 +28,11 @@ list( APPEND coolfluid_ui_graphics_moc_classes
   LoggingList.hpp
   MainWindow.hpp
   OptionLayout.hpp
+  PythonCodeContainer.hpp
+  PythonCodeEditor.hpp
+  PythonConsole.hpp
+  PythonSyntaxeHighlighter.hpp
+  RemoteFileCopy.hpp
   SignalManager.hpp
   SignalInspectorDialog.hpp
   SignatureDialog.hpp
@@ -37,7 +42,9 @@ list( APPEND coolfluid_ui_graphics_moc_classes
   TreeView.hpp )
 
 # Create the moc files
-QT4_WRAP_CPP(coolfluid_ui_graphics_moc_files ${coolfluid_ui_graphics_moc_classes})
+if( QT4_FOUND )
+  QT4_WRAP_CPP(coolfluid_ui_graphics_moc_files ${coolfluid_ui_graphics_moc_classes})
+endif()
 
 # Add the project files (including the moc files)
 list( APPEND coolfluid_ui_graphics_files
@@ -91,6 +98,18 @@ list( APPEND coolfluid_ui_graphics_files
   ModifiedOptionsDialog.hpp
   OptionLayout.cpp
   OptionLayout.hpp
+  PythonCodeContainer.cpp
+  PythonCodeContainer.hpp
+  PythonCodeEditor.cpp
+  PythonCodeEditor.hpp
+  PythonConsole.cpp
+  PythonConsole.hpp
+  PythonPreCompiler.cpp
+  PythonPreCompiler.hpp
+  PythonSyntaxeHighlighter.cpp
+  PythonSyntaxeHighlighter.hpp
+  RemoteFileCopy.cpp
+  RemoteFileCopy.hpp
   SelectPathDialog.cpp
   SelectPathDialog.hpp
   SignalInspectorDialog.cpp
@@ -111,9 +130,19 @@ list( APPEND coolfluid_ui_graphics_files
 
 list( APPEND coolfluid_ui_graphics_cflibs coolfluid_ui_core )
 
+list(APPEND coolfluid_ui_graphics_includedirs ${PYTHON_INCLUDE_DIR})
+list(APPEND coolfluid_ui_graphics_libs ${Boost_PYTHON_LIBRARY} ${PYTHON_LIBRARIES})
+
 # Use Qt Libraries
 list( APPEND coolfluid_ui_graphics_libs ${QT_LIBRARIES} coolfluid_qwt coolfluid_fparser)
 
-QT4_ADD_RESOURCES(coolfluid_ui_graphics_RCC Resources/coolfluid-client.qrc)
+if( CF3_ENABLE_GUI AND QT4_FOUND )
+
+    QT4_ADD_RESOURCES(coolfluid_ui_graphics_RCC Resources/coolfluid-client.qrc)
+
+    set( coolfluid_ui_graphics_condition TRUE )
+else()
+    set( coolfluid_ui_graphics_condition FALSE )
+endif()
 
 coolfluid_add_library(coolfluid_ui_graphics)

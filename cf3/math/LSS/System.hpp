@@ -19,6 +19,7 @@
 #include "math/LSS/BlockAccumulator.hpp"
 #include "math/LSS/Matrix.hpp"
 #include "math/LSS/Vector.hpp"
+#include "SolutionStrategy.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -49,6 +50,8 @@
 
 namespace cf3 {
 namespace math {
+
+class VariablesDescriptor;
 namespace LSS {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -69,9 +72,13 @@ public:
   /// @todo action for it
   void create(cf3::common::PE::CommPattern& cp, Uint neq, std::vector<Uint>& node_connectivity, std::vector<Uint>& starting_indices);
 
+  /// Create a blocked system, where the unknowns for each physical variable are stored together. Note that this only changes the internal ordering,
+  /// the interface is not affected.
+  void create_blocked(cf3::common::PE::CommPattern& cp, const VariablesDescriptor& vars, std::vector<Uint>& node_connectivity, std::vector<Uint>& starting_indices);
+
   /// Exchange to existing matrix and vectors
   /// @todo action for it
-  void swap(const Handle<LSS::Matrix>& matrix, const Handle<LSS::Vector>& solution, const Handle<LSS::Vector>& rhs);
+  void swap(const boost::shared_ptr<LSS::Matrix>& matrix, const boost::shared_ptr<LSS::Vector>& solution, const boost::shared_ptr<LSS::Vector>& rhs);
 
   /// Deallocate underlying data
   void destroy();
@@ -135,19 +142,22 @@ public:
   void print(const std::string& filename);
 
   /// Accessor to matrix
-  Handle<LSS::Matrix> matrix() { return m_mat; };
+  Handle<LSS::Matrix> matrix() { return m_mat; }
 
   /// Accessor to right hand side
-  Handle<LSS::Vector> rhs() { return m_rhs; };
+  Handle<LSS::Vector> rhs() { return m_rhs; }
 
   /// Accessor to solution
-  Handle<LSS::Vector> solution() { return m_sol; };
+  Handle<LSS::Vector> solution() { return m_sol; }
+
+  /// Accessor to the solution strategy
+  Handle<LSS::SolutionStrategy> solution_strategy() { return m_solution_strategy; }
 
   /// Accessor to the state of create
   const bool is_created();
 
   /// Accessor to string option describing the type of the solver
-  const std::string solvertype() { return options().option("solver").value_str(); }
+  const std::string solvertype() { return m_mat->solvertype(); }
 
   //@} END MISCELLANEOUS
 
@@ -171,6 +181,9 @@ private:
 
   /// shared_ptr to right hand side vector
   Handle<LSS::Vector> m_rhs;
+
+  /// Strategy for the solution
+  Handle<LSS::SolutionStrategy> m_solution_strategy;
 
 }; // end of class System
 

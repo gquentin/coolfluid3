@@ -32,7 +32,7 @@ private:
 
     void config_Omega()
     {
-        std::vector<Real> Omega_vec= options().option("Omega").value< std::vector<Real> >();
+        std::vector<Real> Omega_vec= options().value< std::vector<Real> >("Omega");
         cf3_assert(Omega_vec.size() == 3);
         cf3_assert(Omega_vec[0] == 0);
         cf3_assert(Omega_vec[1] == 0);
@@ -43,7 +43,7 @@ private:
 
     void config_Vtrans()
     {
-        std::vector<Real> Vtrans_vec= options().option("Vtrans").value< std::vector<Real> >();
+        std::vector<Real> Vtrans_vec= options().value< std::vector<Real> >("Vtrans");
         cf3_assert(Vtrans_vec.size() == 2);
         Vtrans[0] = Vtrans_vec[0];
         Vtrans[1] = Vtrans_vec[1];
@@ -62,17 +62,17 @@ public:
         VtransDefault[0] = Vtrans[0];
         VtransDefault[1] = Vtrans[1];
 
-        options().add_option("Omega", OmegaDefault)
+        options().add("Omega", OmegaDefault)
             .description("Rotation vector")
             .mark_basic()
             .attach_trigger(boost::bind( &Convection2D::config_Omega, this));
 
-        options().add_option("Vtrans", VtransDefault)
+        options().add("Vtrans", VtransDefault)
             .description("Vector of the translation speeds")
             .mark_basic()
             .attach_trigger( boost::bind( &Convection2D::config_Vtrans, this));
 
-      options().add_option("gamma", gamma)
+      options().add("gamma", gamma)
           .description("The heat capacity ratio")
           .link_to(&gamma);
   }
@@ -149,7 +149,7 @@ public:
       RealVectorNEQS properties_left, properties_right;
       RealVectorNEQS properties_roe;
       Real P;
-      RealVector Vt = transformation_velocity(0.5*(left.coord+right.coord));//welke coord moet ik nemen?
+      RealVector Vt = transformation_velocity(left.coord);
 
       // computation of the left and right properties
       compute_properties(left, properties_left);
@@ -172,9 +172,11 @@ public:
       properties_roe[1] = roe_avg[1]/roe_avg[0];            //u
       properties_roe[2] = roe_avg[2]/roe_avg[0];            //v
       properties_roe[3] = roe_avg[3]/roe_avg[0];            //H
-      P = properties_roe[0] * (gamma - 1.)/gamma*(properties_roe[3]-0.5
-                                                 *(properties_roe[1]*properties_roe[1] + properties_roe[2]*properties_roe[2]) + 0.5*(Vt[0] * Vt[0] + Vt[1] * Vt[1]));
-                                                 //(gamma-1)/gamma * rho (H-0.5*(uu+vv)+0.5*Vt*Vt)
+//      P = properties_roe[0] * (gamma - 1.)/gamma*(properties_roe[3]-0.5
+//                                                 *(properties_roe[1]*properties_roe[1] + properties_roe[2]*properties_roe[2]) + 0.5*(Vt[0] * Vt[0] + Vt[1] * Vt[1]));
+//                                                 //(gamma-1)/gamma * rho (H-0.5*(uu+vv)+0.5*Vt*Vt)
+      P = properties_roe[0] * (properties_roe[3] - 0.5*properties_roe[0]*(properties_roe[1]*properties_roe[1] + properties_roe[2]*properties_roe[2]) + 0.5*properties_roe[0]*(Vt[0]*Vt[0] + Vt[1]*Vt[1]));
+      P /= (1 + properties_roe[0]/(gamma-1));
 
       const Real nx = unit_normal[XX];
       const Real ny = unit_normal[YY];

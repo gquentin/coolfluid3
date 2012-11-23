@@ -5,6 +5,7 @@
 // See doc/lgpl.txt and doc/gpl.txt for the license text.
 
 #include <fstream>
+#include <iostream>
 
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
@@ -22,6 +23,7 @@
 #include "common/FindComponents.hpp"
 #include "common/OptionList.hpp"
 #include "common/PE/Comm.hpp"
+#include "common/OptionList.hpp"
 
 #include "Tools/Testing/ProfiledTestFixture.hpp"
 
@@ -40,9 +42,9 @@ ProfiledTestFixture::ProfiledTestFixture() :
 {
   if(!Core::instance().root().get_child("Profiler"))
   {
-    Core::instance().environment().options().configure_option("exception_aborts",false);
-    Core::instance().environment().options().configure_option("exception_backtrace",false);
-    Core::instance().environment().options().configure_option("exception_outputs",false);
+    Core::instance().environment().options().set("exception_aborts",false);
+    Core::instance().environment().options().set("exception_backtrace",false);
+    Core::instance().environment().options().set("exception_outputs",false);
     const std::string prof_name ( "cf3.Tools.GooglePerfTools.GooglePerfProfiling" );
     try
     {
@@ -86,7 +88,7 @@ void ProfiledTestFixture::test_unit_start( boost::unit_test::test_unit const& un
   if( Core::instance().profiler() )
   {
     m_current_filename = m_prefix + "-" + unit.p_name.get() + job_suffix.str() + ".pprof";
-    Core::instance().profiler()->set_file_path(boost::filesystem::path(m_profile_dir / m_current_filename));
+    Core::instance().profiler()->options().set("file_path", URI(boost::filesystem::path(m_profile_dir / m_current_filename).string(), URI::Scheme::FILE));
     Core::instance().profiler()->start_profiling();
   }
 }

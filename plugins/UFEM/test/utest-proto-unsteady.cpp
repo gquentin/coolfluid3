@@ -32,10 +32,11 @@
 
 #include "Tools/MeshGeneration/MeshGeneration.hpp"
 
-#include "UFEM/LinearSolverUnsteady.hpp"
+#include "UFEM/LSSActionUnsteady.hpp"
+#include "UFEM/Solver.hpp"
 #include "UFEM/Tags.hpp"
-#include "solver/actions/ZeroLSS.hpp"
-#include "solver/actions/SolveLSS.hpp"
+#include "math/LSS/ZeroLSS.hpp"
+#include "math/LSS/SolveLSS.hpp"
 
 
 using namespace cf3;
@@ -80,7 +81,7 @@ struct ProtoUnsteadyFixture
   /// Write the analytical solution, according to "A Heat transfer textbook", section 5.3
   void set_analytical_solution(Region& region, const std::string& field_name, const std::string& var_name)
   {
-    MeshTerm<0, ScalarField > T(field_name, var_name);
+    FieldVariable<0, ScalarField > T(field_name, var_name);
 
     if(t == 0.)
     {
@@ -143,24 +144,22 @@ BOOST_AUTO_TEST_CASE( InitMPI )
 BOOST_AUTO_TEST_CASE( Heat1DUnsteady )
 {
   // debug output
-  Core::instance().environment().options().configure_option("log_level", 4u);
+  Core::instance().environment().options().set("log_level", 4u);
 
   // Setup a model
   ModelUnsteady& model = *Core::instance().root().create_component<ModelUnsteady>("Model");
   Domain& domain = model.create_domain("Domain");
-  UFEM::LinearSolverUnsteady& solver = *model.create_component<UFEM::LinearSolverUnsteady>("Solver");
+  UFEM::Solver& solver = *model.create_component<UFEM::Solver>("Solver");
+  Handle<UFEM::LSSActionUnsteady> lss_action(solver.add_unsteady_solver("cf3.UFEM.LSSActionUnsteady"));
+  Handle<common::ActionDirector> ic(solver.get_child("InitialConditions"));
 
-  // Linear system setup (TODO: sane default config for this, so this can be skipped)
-  math::LSS::System& lss = *model.create_component<math::LSS::System>("LSS");
-  lss.options().configure_option("solver", std::string("Trilinos"));
-  solver.options().configure_option("lss", lss.handle<math::LSS::System>());
-  
+
   boost::shared_ptr<solver::actions::Iterate> time_loop = allocate_component<solver::actions::Iterate>("TimeLoop");
   time_loop->create_component<solver::actions::CriterionTime>("CriterionTime");
 
   // Proto placeholders
-  MeshTerm<0, ScalarField> temperature("Temperature", UFEM::Tags::solution());
-  MeshTerm<1, ScalarField> temperature_analytical("TemperatureAnalytical", UFEM::Tags::source_terms());
+  FieldVariable<0, ScalarField> temperature("Temperature", UFEM::Tags::solution());
+  FieldVariable<1, ScalarField> temperature_analytical("TemperatureAnalytical", UFEM::Tags::source_terms());
 
   // Allowed elements (reducing this list improves compile times)
   boost::mpl::vector1<mesh::LagrangeP1::Line1D> allowed_elements;
@@ -169,13 +168,11 @@ BOOST_AUTO_TEST_CASE( Heat1DUnsteady )
   boost::shared_ptr<UFEM::BoundaryConditions> bc = allocate_component<UFEM::BoundaryConditions>("BoundaryConditions");
 
   // add the top-level actions (assembly, BC and solve)
-  solver
+  *ic
     << create_proto_action("Initialize", nodes_expression(temperature = initial_temp))
-    << create_proto_action("InitializeAnalytical", nodes_expression(temperature_analytical = initial_temp))
-    <<
-    (
-      time_loop
-      << allocate_component<solver::actions::ZeroLSS>("ZeroLSS")
+    << create_proto_action("InitializeAnalytical", nodes_expression(temperature_analytical = initial_temp));
+  *lss_action
+      << allocate_component<math::LSS::ZeroLSS>("ZeroLSS")
       << create_proto_action
       (
         "Assembly",
@@ -188,18 +185,16 @@ BOOST_AUTO_TEST_CASE( Heat1DUnsteady )
             element_quadrature
             (
               _A(temperature) += alpha * transpose(nabla(temperature))*nabla(temperature),
-              _T(temperature) += solver.invdt() * transpose(N(temperature))*N(temperature)
+              _T(temperature) += lss_action->invdt() * transpose(N(temperature))*N(temperature)
             ),
-            solver.system_matrix += _T + 0.5 * _A,
-            solver.system_rhs += -_A * nodal_values(temperature)
+            lss_action->system_matrix += _T + 0.5 * _A,
+            lss_action->system_rhs += -_A * nodal_values(temperature)
           )
         )
       )
       << bc
-      << allocate_component<solver::actions::SolveLSS>("SolveLSS")
-      << create_proto_action("Increment", nodes_expression(temperature += solver.solution(temperature)))
-      << allocate_component<solver::actions::AdvanceTime>("AdvanceTime")
-    );
+      << allocate_component<math::LSS::SolveLSS>("SolveLSS")
+      << create_proto_action("Increment", nodes_expression(temperature += lss_action->solution(temperature)));
 
   // Setup physics
   model.create_physics("cf3.physics.DynamicModel");
@@ -208,20 +203,22 @@ BOOST_AUTO_TEST_CASE( Heat1DUnsteady )
   // Mesh& mesh = *domain.create_component<Mesh>("Mesh");
   // Tools::MeshGeneration::create_line(mesh, length, nb_segments);
   boost::shared_ptr<MeshGenerator> create_line = build_component_abstract_type<MeshGenerator>("cf3.mesh.SimpleMeshGenerator","create_line");
-  create_line->options().configure_option("mesh",domain.uri()/"Mesh");
-  create_line->options().configure_option("lengths",std::vector<Real>(DIM_1D, length));
-  create_line->options().configure_option("nb_cells",std::vector<Uint>(DIM_1D, nb_segments));
+  create_line->options().set("mesh",domain.uri()/"Mesh");
+  create_line->options().set("lengths",std::vector<Real>(DIM_1D, length));
+  create_line->options().set("nb_cells",std::vector<Uint>(DIM_1D, nb_segments));
   Mesh& mesh = create_line->generate();
 
-  lss.matrix()->options().configure_option("settings_file", std::string(boost::unit_test::framework::master_test_suite().argv[1]));
+  lss_action->options().set("regions", std::vector<URI>(1, mesh.topology().uri()));
+  ic->get_child("Initialize")->options().set("regions", std::vector<URI>(1, mesh.topology().uri()));
+  ic->get_child("InitializeAnalytical")->options().set("regions", std::vector<URI>(1, mesh.topology().uri()));
 
   bc->add_constant_bc("xneg", "Temperature", ambient_temp);
   bc->add_constant_bc("xpos", "Temperature", ambient_temp);
 
   // Configure timings
   Time& time = model.create_time();
-  time.options().configure_option("time_step", dt);
-  time.options().configure_option("end_time", end_time);
+  time.options().set("time_step", dt);
+  time.options().set("end_time", end_time);
 
   // Run the solver
   model.simulate();

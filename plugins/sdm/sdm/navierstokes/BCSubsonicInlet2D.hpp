@@ -15,6 +15,12 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <boost/bind.hpp>
+#include <boost/function.hpp>
+
+#include "math/AnalyticalFunction.hpp"
+#include "math/Functions.hpp"
+
 #include "sdm/BCWeak.hpp"
 #include "sdm/navierstokes/LibNavierStokes.hpp"
 
@@ -38,23 +44,26 @@ public:
   static std::string type_name() { return "BCSubsonicInletTtPtAlpha2D"; }
   BCSubsonicInletTtPtAlpha2D(const std::string& name) : BCWeak< PhysData >(name)
   {
-    m_Tt=273.15 + 25; // 25 degrees Celcius
-    options().add_option("Tt",m_Tt).description("Total Temperature").link_to(&m_Tt);
-    m_Pt=100000; // 1 bar
-    options().add_option("Pt",m_Pt).description("Total Pressure").link_to(&m_Pt);
-    m_alpha=0.; // 0 rad
-    options().add_option("alpha",m_alpha).description("flow angle in rad").link_to(&m_alpha);
+    m_function_Tt.parse("298.15","x,y");  // 25 degrees Celcius
+    m_function_Pt.parse("100000","x,y");  // 1 bar
+    m_function_alpha.parse("0","x,y");    // 0 radians
 
+    options().add("Tt",m_function_Tt.function()).description("Total Temperature")
+        .attach_trigger( boost::bind( &BCSubsonicInletTtPtAlpha2D::config_Tt, this) );
+    options().add("Pt",m_function_Tt.function()).description("Total Pressure")
+        .attach_trigger( boost::bind( &BCSubsonicInletTtPtAlpha2D::config_Pt, this) );
+    options().add("alpha",m_function_Tt.function()).description("flow angle in rad")
+        .attach_trigger( boost::bind( &BCSubsonicInletTtPtAlpha2D::config_alpha, this) );
 
     m_gamma=1.4;
     m_gamma_minus_1=m_gamma-1.;
     m_R=287.05;
 
-    options().add_option("gamma", m_gamma)
-        .description("The heat capacity ratio")
+    options().add("gamma", m_gamma)
+        .description("Heat capacity ratio")
         .attach_trigger( boost::bind( &BCSubsonicInletTtPtAlpha2D::config_gamma, this) );
 
-    options().add_option("R", m_R)
+    options().add("R", m_R)
         .description("Gas constant")
         .link_to(&m_R);
 
@@ -63,12 +72,24 @@ public:
 
   void config_gamma()
   {
-    m_gamma = options().option("gamma").value<Real>();
+    m_gamma = options().value<Real>("gamma");
     m_gamma_minus_1 = m_gamma - 1.;
   }
 
+  void config_Tt()    { m_function_Tt   .parse(options().option("Tt").value_str()); }
+  void config_Pt()    { m_function_Pt   .parse(options().option("Pt").value_str()); }
+  void config_alpha() { m_function_alpha.parse(options().option("alpha").value_str()); }
+
   virtual void compute_solution(const PhysData& inner_cell_data, const RealVectorNDIM& unit_normal, RealVectorNEQS& boundary_face_pt_data)
   {
+    using math::Functions::sign;
+
+    // Evaluate analytical functions
+    m_function_Tt.evaluate(inner_cell_data.coord,m_Tt);
+    m_function_Pt.evaluate(inner_cell_data.coord,m_Pt);
+    m_function_alpha.evaluate(inner_cell_data.coord,m_alpha);
+
+    // Compute inner cell data
     m_rho_inner       = inner_cell_data.solution[Rho];
     m_uuvv_inner      = (inner_cell_data.solution[RhoUx]*inner_cell_data.solution[RhoUx] + inner_cell_data.solution[RhoUy]*inner_cell_data.solution[RhoUy])/(m_rho_inner*m_rho_inner);
     m_rhoE_inner      = inner_cell_data.solution[RhoE];
@@ -80,12 +101,13 @@ public:
     //m_Tt_inner    = m_T_inner*m_coeff_inner;
     //m_Pt_inner    = m_p_inner*m_pow_coeff_inner;
 
+    // Compute values to impose on boundary
     m_M = sqrt(m_M2_inner);
     m_tan_alpha=std::tan(m_alpha);
     m_T = m_Tt/m_coeff_inner;
     m_p = m_Pt/m_pow_coeff_inner;
     m_rho = m_p/(m_R*m_T);
-    m_U[XX] = m_M*std::sqrt(m_gamma*m_R*m_T/(1.+m_tan_alpha*m_tan_alpha));
+    m_U[XX] = sign(std::cos(m_alpha)) * m_M*std::sqrt(m_gamma*m_R*m_T/(1.+m_tan_alpha*m_tan_alpha));
     m_U[YY] = m_tan_alpha*m_U[XX];
     m_uuvv = m_U[XX]*m_U[XX]+m_U[YY]*m_U[YY];
     m_rhoE = m_p/m_gamma_minus_1 + 0.5*m_rho*m_uuvv;
@@ -100,14 +122,17 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 private: // data
+  math::AnalyticalFunction m_function_Tt;
+  math::AnalyticalFunction m_function_Pt;
+  math::AnalyticalFunction m_function_alpha;
+
   Real m_Tt;
   Real m_Pt;
   Real m_alpha;
 
-
   Real m_R;
   Real m_gamma;
-  RealVector2 m_U;
+  RealVectorNDIM m_U;
 
   Real m_T_inner;
   Real m_rho_inner;
@@ -144,13 +169,15 @@ public:
   static std::string type_name() { return "BCSubsonicInletUT2D"; }
   BCSubsonicInletUT2D(const std::string& name) : BCWeak< PhysData >(name)
   {
+    m_function_T.parse("298.15","x,y");
+
     m_U.resize(1.,0.);
-    options().add_option("U",m_U)
+    options().add("U",m_U)
         .description("Velocity [m/s]")
         .link_to(&m_U);
 
     m_T=273.15 + 25;
-    options().add_option("T",m_T)
+    options().add("T",m_T)
         .description("Temperature [K]")
         .link_to(&m_T);
 
@@ -158,11 +185,11 @@ public:
     m_gamma_minus_1=m_gamma-1.;
     m_R=287.05;
 
-    options().add_option("gamma", m_gamma)
+    options().add("gamma", m_gamma)
         .description("The heat capacity ratio")
         .attach_trigger( boost::bind( &BCSubsonicInletUT2D::config_gamma, this) );
 
-    options().add_option("R", m_R)
+    options().add("R", m_R)
         .description("Gas constant")
         .link_to(&m_R);
 
@@ -171,12 +198,17 @@ public:
 
   void config_gamma()
   {
-    m_gamma = options().option("gamma").value<Real>();
+    m_gamma = options().value<Real>("gamma");
     m_gamma_minus_1 = m_gamma - 1.;
   }
 
+  void config_T()    { m_function_T.parse(options().option("T").value_str()); }
+
   virtual void compute_solution(const PhysData& inner_cell_data, const RealVectorNDIM& unit_normal, RealVectorNEQS& boundary_face_pt_data)
   {
+    // Evaluate analytical functions
+    m_function_T.evaluate(inner_cell_data.coord,m_T);
+
     // solution at inside of face
     m_rho_inner  = inner_cell_data.solution[Rho];
     m_uuvv_inner = (inner_cell_data.solution[RhoUx]*inner_cell_data.solution[RhoUx] + inner_cell_data.solution[RhoUy]*inner_cell_data.solution[RhoUy])/(m_rho_inner*m_rho_inner);
@@ -197,6 +229,8 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 private: // data
+  math::AnalyticalFunction m_function_T;
+
   Real m_T;
   Real m_R;
   Real m_gamma;

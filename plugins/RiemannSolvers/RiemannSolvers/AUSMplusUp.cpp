@@ -31,23 +31,23 @@ AUSMplusUp::AUSMplusUp ( const std::string& name ) :
 {
   options().option("physical_model").attach_trigger( boost::bind( &AUSMplusUp::trigger_physical_model, this) );
 
-  options().add_option("Ku",m_CoeffKu)
+  options().add("Ku",m_CoeffKu)
     .description("Ku")
     .link_to(&m_CoeffKu);
 
-  options().add_option("Kp",m_CoeffKp)
+  options().add("Kp",m_CoeffKp)
     .description("Kp")
     .link_to(&m_CoeffKp);
 
-  options().add_option("sigma",m_Coeffsigma)
+  options().add("sigma",m_Coeffsigma)
     .description("sigma")
     .link_to(&m_Coeffsigma);
 
-  options().add_option("machinf",m_Machinf)
+  options().add("machinf",m_Machinf)
     .description("machinf")
     .link_to(&m_Machinf);
 
-  options().add_option("beta",m_Beta)
+  options().add("beta",m_Beta)
     .description("beta")
     .link_to(&m_Beta);
 
@@ -92,7 +92,7 @@ void AUSMplusUp::trigger_physical_model()
   {
     if (Handle<Component> found_solution_vars = find_component_ptr_recursively_with_name(physical_model(),"solution_vars"))
     {
-      options().configure_option("solution_vars",found_solution_vars->uri());
+      options().set("solution_vars",found_solution_vars->uri());
     }
     else
     {
@@ -115,7 +115,7 @@ Real AUSMplusUp::M1(Real Mach, char chsign)
         sign = -1.;
         break;
       default:
-        std::cout << "sign M1 is unknown \n";
+        CFinfo << "sign M1 is unknown" << CFendl;
       }
     return 0.5*(Mach + sign*abs(Mach));
 }
@@ -131,7 +131,7 @@ Real AUSMplusUp::M2(Real Mach, char chsign)
         sign = -1.;
         break;
       default:
-        std::cout << "sign M1 is unknown \n";
+        CFinfo << "sign M1 is unknown"<<CFendl;
       }
     return sign*0.25*(Mach + sign*1.)*(Mach + sign*1.);
 }
@@ -149,7 +149,7 @@ Real AUSMplusUp::M4(Real Mach, char chsign)
         sign = -1.;
         break;
       default:
-        std::cout << "sign M1 is unknown \n";
+        CFinfo << "sign M1 is unknown" << CFendl;
       }
     return abs(Mach) >= 1. ? M1(Mach, chsign) : M2(Mach, chsign)*(1.-sign*16. * m_Beta * M2(Mach, invchsign));
 }
@@ -167,7 +167,7 @@ Real AUSMplusUp::P5(Real Mach, Real alpha, char chsign)
         sign = -1.;
         break;
       default:
-        std::cout << "sign M1 is unknown \n";
+        CFinfo << "sign M1 is unknown "<<CFendl;
       }
 
     return abs(Mach) >= 1. ? 1./Mach*M1(Mach, chsign) : M2(Mach, chsign)*((sign*2.-Mach)-sign*16.*alpha*Mach*M2(Mach, invchsign));

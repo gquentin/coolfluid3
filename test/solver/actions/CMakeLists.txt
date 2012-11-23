@@ -11,15 +11,10 @@ foreach( mfile ${mesh_files} )
                      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CF3_RESOURCES_DIR}/${mfile} ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR} )
 endforeach()
 
-
-
-coolfluid_add_test( UTEST utest-solver-solvelss
-                    CPP   utest-solver-solvelss.cpp
-                    LIBS  coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_lagrangep2 coolfluid_mesh_lagrangep3 coolfluid_mesh_generation coolfluid_solver coolfluid_math_lss
-                    MPI   1 )
-
 ################################################################################
 # proto tests
+
+if(CF3_ENABLE_PROTO)
 
 if(CMAKE_BUILD_TYPE_CAPS MATCHES "RELEASE")
   set(_ARGS 16 16 120)
@@ -29,26 +24,27 @@ endif()
 coolfluid_add_test( PTEST      ptest-proto-benchmark
                     CPP        ptest-proto-benchmark.cpp
                     ARGUMENTS  ${_ARGS}
-                    LIBS       coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_blockmesh coolfluid_testing coolfluid_mesh_generation coolfluid_solver
-                    CONDITION  CF3_ENABLE_PROTO )
+                    LIBS       coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_blockmesh coolfluid_testing coolfluid_mesh_generation coolfluid_solver)
 
 
 coolfluid_add_test( UTEST     utest-proto-operators
                     CPP       utest-proto-operators.cpp
-                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver
-                    CONDITION CF3_ENABLE_PROTO )
+                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver)
+set_source_files_properties(utest-proto-operators.cpp PROPERTIES COMPILE_FLAGS "-g0")
+
+coolfluid_add_test( UTEST     utest-proto-internals
+                    CPP       utest-proto-internals.cpp
+                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver)
 
 
 coolfluid_add_test( UTEST     utest-proto-components
                     CPP       utest-proto-components.cpp
-                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver
-                    CONDITION CF3_ENABLE_PROTO )
+                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver)
 
 
 coolfluid_add_test( UTEST     utest-proto-elements
                     CPP       utest-proto-elements.cpp
-                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver coolfluid_mesh_blockmesh
-                    CONDITION CF3_ENABLE_PROTO )
+                    LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_generation coolfluid_solver coolfluid_mesh_blockmesh)
 
 
 if(CMAKE_BUILD_TYPE_CAPS MATCHES "RELEASE")
@@ -60,5 +56,14 @@ coolfluid_add_test( PTEST     ptest-proto-parallel
                     CPP       ptest-proto-parallel.cpp
                     ARGUMENTS ${_ARGS}
                     LIBS      coolfluid_mesh coolfluid_solver_actions coolfluid_mesh_lagrangep1 coolfluid_mesh_blockmesh coolfluid_testing coolfluid_mesh_generation coolfluid_solver
-                    MPI       4
-                    CONDITION CF3_ENABLE_PROTO )
+                    MPI       4)
+else()
+coolfluid_mark_not_orphan(
+  ptest-proto-benchmark.cpp
+  utest-proto-operators.cpp
+  utest-proto-internals.cpp
+  utest-proto-components.cpp
+  utest-proto-elements.cpp
+  ptest-proto-parallel.cpp
+)
+endif()

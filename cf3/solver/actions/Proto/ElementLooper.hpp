@@ -45,7 +45,7 @@ struct CheckSameEtype
 
     if(ETYPE::order != space.shape_function().order()) // TODO also check the same space (Lagrange, ...)
     {
-      throw common::SetupError(FromHere(), "Needed element type " + space.support().element_type().derived_type_name() + " for variable " + var.name() + " but it was not in the compiled list");
+      throw common::SetupError(FromHere(), "Needed shape function " + space.shape_function().derived_type_name() + " for variable " + var.name() + " but it was not in the compiled list");
     }
   }
 
@@ -238,6 +238,8 @@ struct ElementLooper
       return;
 
     dispatch(boost::mpl::int_<boost::mpl::size< boost::mpl::filter_view< ElementTypesT, mesh::IsCompatibleWith<ETYPE> > >::value>(), sf);
+    
+    FieldSynchronizer::instance().synchronize();
   }
 
   /// Static dispatch in case everything has the same ETYPE
@@ -247,7 +249,7 @@ struct ElementLooper
     typedef typename ExpressionProperties<ExprT>::NbVarsT NbVarsT;
     typedef ElementData<VariablesT, ETYPE, ETYPE, typename EquationVariables<ExprT, NbVarsT>::type> DataT;
 
-    // Verify the types match, and throw an error if non-matchine fields are found
+    // Verify the types match, and throw an error if non-matching fields are found
     boost::fusion::for_each(m_variables, CheckSameEtype<ETYPE>(m_elements));
 
     DataT data(m_variables, m_elements);

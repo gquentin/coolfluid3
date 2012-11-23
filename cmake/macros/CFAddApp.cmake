@@ -49,9 +49,9 @@ macro( coolfluid_add_application APPNAME )
   endif()
 
   if( CF3_BUILD_${APPNAME} AND ${APPNAME}_has_all_plugins AND ${APPNAME}_condition )
-    set( ${APPNAME}_builds YES CACHE INTERNAL "" )
+    set( ${APPNAME}_builds YES CACHE INTERNAL "" FORCE )
   else()
-    set( ${APPNAME}_builds NO  CACHE INTERNAL "" )
+    set( ${APPNAME}_builds NO  CACHE INTERNAL "" FORCE )
   endif()
 
   # compile if selected and all required modules are present
@@ -103,7 +103,7 @@ macro( coolfluid_add_application APPNAME )
     # if mpi was found add it to the libraries
     if(CF3_HAVE_MPI AND NOT CF3_HAVE_MPI_COMPILER)
       target_link_libraries( ${APPNAME} ${MPI_LIBRARIES} )
-      if( DEFINED MPI_CXX_LIBRARIES )
+      if( MPI_CXX_LIBRARIES )
           target_link_libraries( ${APPNAME} ${MPI_CXX_LIBRARIES} )
       endif()
     endif()

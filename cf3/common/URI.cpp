@@ -128,6 +128,12 @@ bool URI::operator== (const URI& right) const
   return m_scheme == right.m_scheme && m_path == right.m_path;
 }
 
+bool URI::operator!= ( const URI& right ) const
+{
+  return !operator==(right);
+}
+
+
 URI& URI::operator/= (const URI& rhs)
 {
   if ( !m_path.empty() && !rhs.m_path.empty() ) m_path += CF3_URI_SEPARATOR;
@@ -294,7 +300,7 @@ std::string URI::extension() const
 std::string URI::base_name() const
 {
   const boost::filesystem::path p(path());
-  return boost::filesystem::basename(p);
+  return p.stem().string();
 }
 
 void URI::cleanup()

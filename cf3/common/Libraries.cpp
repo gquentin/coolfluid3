@@ -113,6 +113,7 @@ Handle<Library> Libraries::autoload_library_with_namespace( const std::string& l
   }
   catch(const std::exception& e)
   {
+    CFwarn << "Library " << lib_name << " failed to load with error " << e.what() << CFendl;
     return Handle<Library>();
   }
 }
@@ -175,7 +176,7 @@ void Libraries::signature_load_libraries ( SignalArgs& args )
 
   std::vector<URI> dummy;
 
-  options.add_option("libs", dummy)
+  options.add("libs", dummy)
       .description("Libraries to load");
       //->cast_to<OptionURI>()->set_supported_protocols(schemes);
 

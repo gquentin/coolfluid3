@@ -32,13 +32,6 @@ namespace solver {
 /// @author Bart Janssens
 class solver_API Solver : public common::ActionDirector {
 
-public: // typedefs
-
-  /// type of pointer to Component
-  
-  /// type of pointer to constant Component
-  
-
 public: // functions
 
   /// Contructor
@@ -66,6 +59,11 @@ protected:
 
   /// Checked access to the physical model
   physics::PhysModel& physics();
+  
+  /// Raw access to the physics
+  Handle<physics::PhysModel> m_physics;
+  
+  void trigger_physical_model();
 
 private:
   class Implementation;

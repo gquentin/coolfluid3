@@ -4,6 +4,8 @@
 
 macro( coolfluid_add_library LIBNAME )
 
+  set( ${LIBNAME}_is_coolfluid_library TRUE CACHE INTERNAL "" )
+
   # option to build it or not (option is advanced and does not appear in the cmake gui)
   option( CF3_BUILD_${LIBNAME} "Build the ${LIBNAME} library" ON )
   mark_as_advanced( CF3_BUILD_${LIBNAME} )
@@ -49,9 +51,9 @@ macro( coolfluid_add_library LIBNAME )
   endif()
 
   if(CF3_BUILD_${LIBNAME} AND ${LIBNAME}_has_all_plugins AND ${LIBNAME}_condition)
-    set( ${LIBNAME}_builds YES CACHE INTERNAL "" )
+    set( ${LIBNAME}_builds YES CACHE INTERNAL "" FORCE )
   else()
-    set( ${LIBNAME}_builds NO  CACHE INTERNAL "" )
+    set( ${LIBNAME}_builds NO  CACHE INTERNAL "" FORCE )
   endif()
 
   # compile if selected and all required modules are present
@@ -122,7 +124,7 @@ macro( coolfluid_add_library LIBNAME )
     # if mpi was found add it to the libraries
     if(CF3_HAVE_MPI AND NOT CF3_HAVE_MPI_COMPILER)
         target_link_libraries( ${LIBNAME} ${MPI_LIBRARIES} )
-        if( DEFINED MPI_CXX_LIBRARIES )
+        if( MPI_CXX_LIBRARIES )
              target_link_libraries( ${LIBNAME} ${MPI_CXX_LIBRARIES} )
         endif()
     endif()
